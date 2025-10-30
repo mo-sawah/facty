@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: facty
- * Description: AI-powered fact-checking plugin that verifies article accuracy using OpenRouter with web search
- * Version: 3.0.7
+ * Description: AI-powered fact-checking plugin that verifies article accuracy using OpenRouter with web search or Firecrawl for deep multi-step research
+ * Version: 4.0.0
  * Author: Mohamed Sawah
  * Author URI: https://sawahsolutions.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('FACTY_VERSION', '3.0.7');
+define('FACTY_VERSION', '4.0.0');
 define('FACTY_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('FACTY_PLUGIN_PATH', plugin_dir_path(__FILE__));
 
@@ -59,7 +59,12 @@ class Facty {
             'free_limit' => 5,
             'terms_url' => '',
             'privacy_url' => '',
-            'require_email' => true
+            'require_email' => true,
+            // New Firecrawl options
+            'fact_check_mode' => 'openrouter',
+            'firecrawl_api_key' => '',
+            'firecrawl_searches_per_claim' => 3,
+            'firecrawl_max_claims' => 10
         );
         
         $saved_options = get_option('facty_options', array());
@@ -133,6 +138,7 @@ class Facty {
                 'free_limit' => $this->options['free_limit'],
                 'terms_url' => $this->options['terms_url'],
                 'privacy_url' => $this->options['privacy_url'],
+                'fact_check_mode' => $this->options['fact_check_mode'],
                 'colors' => array(
                     'primary' => isset($this->options['primary_color']) ? $this->options['primary_color'] : '#3b82f6',
                     'success' => isset($this->options['success_color']) ? $this->options['success_color'] : '#059669',
@@ -167,6 +173,8 @@ class Facty {
         
         $user_status = $this->get_user_status();
         
+        $mode_label = $this->options['fact_check_mode'] === 'firecrawl' ? 'Firecrawl Deep Research' : 'OpenRouter Web Search';
+        
         ob_start();
         ?>
         <div class="fact-check-container" data-post-id="<?php echo get_the_ID(); ?>" data-user-status="<?php echo esc_attr(json_encode($user_status)); ?>">
@@ -179,7 +187,7 @@ class Facty {
                                 <circle cx="12" cy="12" r="9"></circle>
                             </svg>
                         </div>
-                        <h3>Facty</h3>
+                        <h3>Facty <span style="font-size: 0.65em; opacity: 0.7;">(<?php echo esc_html($mode_label); ?>)</span></h3>
                     </div>
                     <button class="check-button">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -482,7 +490,12 @@ class Facty {
         }
         
         try {
-            $result = $this->analyze_content($content);
+            // Route to appropriate analyzer based on mode
+            if ($this->options['fact_check_mode'] === 'firecrawl' && !empty($this->options['firecrawl_api_key'])) {
+                $result = $this->analyze_content_firecrawl($content);
+            } else {
+                $result = $this->analyze_content_openrouter($content);
+            }
             
             // Cache the result
             $this->cache_result($post_id, $post->post_content, $result);
@@ -514,7 +527,339 @@ class Facty {
         }
     }
     
-    private function analyze_content($content) {
+    private function analyze_content_firecrawl($content) {
+        $api_key = $this->options['firecrawl_api_key'];
+        $current_date = current_time('F j, Y');
+        $website_name = get_bloginfo('name');
+        
+        // Step 1: Extract claims from content using AI
+        $claims = $this->extract_claims_with_ai($content);
+        
+        if (empty($claims)) {
+            throw new Exception('Failed to extract claims from content');
+        }
+        
+        // Step 2: Multi-step verification using Firecrawl
+        $verification_results = array();
+        $all_sources = array();
+        
+        foreach ($claims as $claim) {
+            $claim_result = $this->verify_claim_with_firecrawl($claim, $api_key);
+            $verification_results[] = $claim_result;
+            
+            if (!empty($claim_result['sources'])) {
+                $all_sources = array_merge($all_sources, $claim_result['sources']);
+            }
+        }
+        
+        // Step 3: Generate final report using AI
+        $final_result = $this->generate_final_report($content, $verification_results, $all_sources);
+        
+        return $final_result;
+    }
+    
+    private function extract_claims_with_ai($content) {
+        $api_key = $this->options['api_key'];
+        $model = $this->options['model'];
+        $max_claims = intval($this->options['firecrawl_max_claims']);
+        
+        $prompt = "Analyze this article and extract the top {$max_claims} most important FACTUAL claims that can be verified. 
+        
+Do NOT extract:
+- Opinions or subjective statements
+- General statements that can't be verified
+- Satirical or obvious humor content
+
+For each claim, provide:
+1. The exact claim from the article
+2. A concise search query to verify it (3-5 words)
+3. The importance level (high/medium/low)
+
+ARTICLE:
+{$content}
+
+Return ONLY valid JSON (no markdown):
+{
+    \"content_type\": \"news\" | \"opinion\" | \"satire\",
+    \"claims\": [
+        {
+            \"claim\": \"specific factual claim\",
+            \"search_query\": \"concise search terms\",
+            \"importance\": \"high\" | \"medium\" | \"low\"
+        }
+    ]
+}";
+
+        $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $api_key,
+                'Content-Type' => 'application/json',
+                'HTTP-Referer' => home_url(),
+                'X-Title' => get_bloginfo('name')
+            ),
+            'body' => json_encode(array(
+                'model' => $model,
+                'messages' => array(
+                    array('role' => 'user', 'content' => $prompt)
+                ),
+                'max_tokens' => 1500,
+                'temperature' => 0.1
+            )),
+            'timeout' => 60
+        ));
+        
+        if (is_wp_error($response)) {
+            throw new Exception('Failed to extract claims: ' . $response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (!isset($data['choices'][0]['message']['content'])) {
+            throw new Exception('Invalid AI response when extracting claims');
+        }
+        
+        $ai_content = trim($data['choices'][0]['message']['content']);
+        $ai_content = preg_replace('/^```json\s*/', '', $ai_content);
+        $ai_content = preg_replace('/\s*```$/', '', $ai_content);
+        $result = json_decode($ai_content, true);
+        
+        // If content is satire, return early
+        if (isset($result['content_type']) && $result['content_type'] === 'satire') {
+            return array();
+        }
+        
+        return isset($result['claims']) ? $result['claims'] : array();
+    }
+    
+    private function verify_claim_with_firecrawl($claim, $api_key) {
+        $search_query = $claim['search_query'];
+        $searches_per_claim = intval($this->options['firecrawl_searches_per_claim']);
+        
+        // Search and scrape with Firecrawl
+        $response = wp_remote_post('https://api.firecrawl.dev/v2/search', array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $api_key,
+                'Content-Type' => 'application/json'
+            ),
+            'body' => json_encode(array(
+                'query' => $search_query,
+                'limit' => $searches_per_claim,
+                'scrapeOptions' => array(
+                    'formats' => array('markdown')
+                ),
+                'tbs' => 'qdr:m' // Past month for recent info
+            )),
+            'timeout' => 45
+        ));
+        
+        if (is_wp_error($response)) {
+            return array(
+                'claim' => $claim['claim'],
+                'status' => 'error',
+                'message' => 'Search failed',
+                'sources' => array()
+            );
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        $sources = array();
+        $scraped_content = '';
+        
+        if (isset($data['success']) && $data['success'] && isset($data['data']['web'])) {
+            foreach ($data['data']['web'] as $result) {
+                $sources[] = array(
+                    'title' => isset($result['title']) ? $result['title'] : 'Source',
+                    'url' => isset($result['url']) ? $result['url'] : '',
+                    'credibility' => 'medium'
+                );
+                
+                // Collect scraped content for verification
+                if (isset($result['markdown'])) {
+                    $scraped_content .= substr($result['markdown'], 0, 800) . "\n\n";
+                }
+            }
+        }
+        
+        // Verify claim against scraped content
+        $verification = $this->verify_claim_against_sources($claim['claim'], $scraped_content);
+        
+        return array(
+            'claim' => $claim['claim'],
+            'importance' => $claim['importance'],
+            'verification' => $verification,
+            'sources' => $sources
+        );
+    }
+    
+    private function verify_claim_against_sources($claim, $scraped_content) {
+        $api_key = $this->options['api_key'];
+        $model = $this->options['model'];
+        
+        $prompt = "Verify this claim against the provided source content:
+
+CLAIM: {$claim}
+
+SOURCE CONTENT:
+{$scraped_content}
+
+Analyze and return ONLY valid JSON (no markdown):
+{
+    \"is_accurate\": true | false,
+    \"confidence\": \"high\" | \"medium\" | \"low\",
+    \"explanation\": \"brief explanation of verification\",
+    \"correction\": \"correct information if claim is false, otherwise empty string\"
+}";
+
+        $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $api_key,
+                'Content-Type' => 'application/json',
+                'HTTP-Referer' => home_url(),
+                'X-Title' => get_bloginfo('name')
+            ),
+            'body' => json_encode(array(
+                'model' => $model,
+                'messages' => array(
+                    array('role' => 'user', 'content' => $prompt)
+                ),
+                'max_tokens' => 500,
+                'temperature' => 0.1
+            )),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            return array(
+                'is_accurate' => false,
+                'confidence' => 'low',
+                'explanation' => 'Verification failed',
+                'correction' => ''
+            );
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (!isset($data['choices'][0]['message']['content'])) {
+            return array(
+                'is_accurate' => false,
+                'confidence' => 'low',
+                'explanation' => 'Verification failed',
+                'correction' => ''
+            );
+        }
+        
+        $ai_content = trim($data['choices'][0]['message']['content']);
+        $ai_content = preg_replace('/^```json\s*/', '', $ai_content);
+        $ai_content = preg_replace('/\s*```$/', '', $ai_content);
+        $result = json_decode($ai_content, true);
+        
+        return is_array($result) ? $result : array(
+            'is_accurate' => false,
+            'confidence' => 'low',
+            'explanation' => 'Verification failed',
+            'correction' => ''
+        );
+    }
+    
+    private function generate_final_report($content, $verification_results, $all_sources) {
+        $api_key = $this->options['api_key'];
+        $model = $this->options['model'];
+        $current_date = current_time('F j, Y');
+        
+        $verification_summary = json_encode($verification_results);
+        
+        $prompt = "Based on the verification results below, generate a comprehensive fact-check report:
+
+ORIGINAL ARTICLE EXCERPT:
+{$content}
+
+VERIFICATION RESULTS:
+{$verification_summary}
+
+Today's Date: {$current_date}
+
+Generate a detailed report in ONLY valid JSON (no markdown):
+{
+    \"score\": 0-100,
+    \"status\": \"Accurate\" | \"Mostly Accurate\" | \"Partially Accurate\" | \"Mostly Inaccurate\" | \"False\",
+    \"description\": \"2-3 sentence summary\",
+    \"detailed_analysis\": {
+        \"claims_identified\": number,
+        \"claims_verified\": number,
+        \"claims_false\": number,
+        \"overall_assessment\": \"detailed paragraph\"
+    },
+    \"issues\": [
+        {
+            \"claim\": \"the claim\",
+            \"type\": \"Factual Error\" | \"Outdated Information\" | \"Misleading\" | \"Unverified\",
+            \"severity\": \"high\" | \"medium\" | \"low\",
+            \"description\": \"what's wrong\",
+            \"correct_information\": \"correct info\",
+            \"suggestion\": \"how to fix\"
+        }
+    ],
+    \"verified_claims\": [
+        {
+            \"claim\": \"accurate claim\",
+            \"verification\": \"why it's correct\"
+        }
+    ]
+}";
+
+        $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $api_key,
+                'Content-Type' => 'application/json',
+                'HTTP-Referer' => home_url(),
+                'X-Title' => get_bloginfo('name')
+            ),
+            'body' => json_encode(array(
+                'model' => $model,
+                'messages' => array(
+                    array('role' => 'user', 'content' => $prompt)
+                ),
+                'max_tokens' => 3000,
+                'temperature' => 0.2
+            )),
+            'timeout' => 90
+        ));
+        
+        if (is_wp_error($response)) {
+            throw new Exception('Failed to generate report: ' . $response->get_error_message());
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (!isset($data['choices'][0]['message']['content'])) {
+            throw new Exception('Invalid AI response when generating report');
+        }
+        
+        $ai_content = trim($data['choices'][0]['message']['content']);
+        $ai_content = preg_replace('/^```json\s*/', '', $ai_content);
+        $ai_content = preg_replace('/\s*```$/', '', $ai_content);
+        $result = json_decode($ai_content, true);
+        
+        if (!is_array($result)) {
+            throw new Exception('Failed to parse final report');
+        }
+        
+        // Add sources from Firecrawl searches
+        $result['sources'] = array_slice($all_sources, 0, 8);
+        
+        // Add metadata
+        $result['mode'] = 'firecrawl';
+        $result['searches_performed'] = count($verification_results) * intval($this->options['firecrawl_searches_per_claim']);
+        
+        return $result;
+    }
+    
+    private function analyze_content_openrouter($content) {
         $api_key = $this->options['api_key'];
         $model = $this->options['model'];
         
@@ -722,9 +1067,11 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
             $result['sources'] = $this->extract_sources_from_response($body);
         }
         
+        // Add mode metadata
+        $result['mode'] = 'openrouter';
+        
         return $result;
     }
-
 
     
     private function extract_sources_from_response($response_body) {
@@ -754,7 +1101,7 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
     private function get_cached_result($post_id, $content) {
         global $wpdb;
         
-        $content_hash = hash('sha256', $content);
+        $content_hash = hash('sha256', $content . $this->options['fact_check_mode']);
         $table_name = $wpdb->prefix . 'facty_cache';
         
         $cached = $wpdb->get_var($wpdb->prepare(
@@ -770,7 +1117,7 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
     private function cache_result($post_id, $content, $result) {
         global $wpdb;
         
-        $content_hash = hash('sha256', $content);
+        $content_hash = hash('sha256', $content . $this->options['fact_check_mode']);
         $table_name = $wpdb->prefix . 'facty_cache';
         
         $wpdb->replace(
@@ -850,7 +1197,6 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
         }
     }
 
-
     
     public function add_admin_menu() {
         add_options_page(
@@ -882,11 +1228,15 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
         
         $fields = array(
             'enabled' => 'Enable Facty',
+            'fact_check_mode' => 'Fact-Checking Mode',
             'api_key' => 'OpenRouter API Key',
             'model' => 'OpenRouter Model',
+            'firecrawl_api_key' => 'Firecrawl API Key',
+            'firecrawl_searches_per_claim' => 'Firecrawl: Searches Per Claim',
+            'firecrawl_max_claims' => 'Firecrawl: Max Claims to Check',
             'description_text' => 'Widget Description',
-            'web_searches' => 'Number of Web Searches',
-            'search_context' => 'Search Context Size',
+            'web_searches' => 'OpenRouter: Web Searches',
+            'search_context' => 'OpenRouter: Search Context',
             'require_email' => 'Require Email for Visitors',
             'free_limit' => 'Free Reports Limit',
             'terms_url' => 'Terms of Use URL',
@@ -910,7 +1260,53 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
     }
     
     public function settings_section_callback() {
-        echo '<p>Configure your Facty plugin settings below. This plugin uses OpenRouter\'s web search feature to verify factual claims.</p>';
+        echo '<p>Configure your Facty plugin settings below.</p>';
+        echo '<div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #2196f3; margin: 20px 0;">';
+        echo '<h3 style="margin-top: 0;">🔥 New: Firecrawl Mode</h3>';
+        echo '<p><strong>Choose between two powerful fact-checking modes:</strong></p>';
+        echo '<ul style="margin-left: 20px;">';
+        echo '<li><strong>OpenRouter Web Search:</strong> Fast, single-pass fact-checking using AI with web search</li>';
+        echo '<li><strong>Firecrawl Deep Research:</strong> Multi-step verification with full content scraping for maximum accuracy</li>';
+        echo '</ul>';
+        echo '<p><em>Firecrawl mode performs deeper analysis by scraping full content from sources and verifying each claim individually.</em></p>';
+        echo '</div>';
+    }
+    
+    public function fact_check_mode_render() {
+        $modes = array(
+            'openrouter' => 'OpenRouter Web Search (Fast & Efficient)',
+            'firecrawl' => 'Firecrawl Deep Research (Detailed & Accurate)'
+        );
+        ?>
+        <select name='facty_options[fact_check_mode]' id="fact-check-mode-select">
+            <?php foreach ($modes as $value => $label): ?>
+                <option value='<?php echo $value; ?>' <?php selected($this->options['fact_check_mode'], $value); ?>><?php echo $label; ?></option>
+            <?php endforeach; ?>
+        </select>
+        <p class="description">Choose your preferred fact-checking method</p>
+        <script>
+        jQuery(document).ready(function($) {
+            function toggleModeOptions() {
+                var mode = $('#fact-check-mode-select').val();
+                if (mode === 'firecrawl') {
+                    $('tr').has('input[name="facty_options[firecrawl_api_key]"]').show();
+                    $('tr').has('input[name="facty_options[firecrawl_searches_per_claim]"]').show();
+                    $('tr').has('input[name="facty_options[firecrawl_max_claims]"]').show();
+                    $('tr').has('select[name="facty_options[web_searches]"]').hide();
+                    $('tr').has('select[name="facty_options[search_context]"]').hide();
+                } else {
+                    $('tr').has('input[name="facty_options[firecrawl_api_key]"]').hide();
+                    $('tr').has('input[name="facty_options[firecrawl_searches_per_claim]"]').hide();
+                    $('tr').has('input[name="facty_options[firecrawl_max_claims]"]').hide();
+                    $('tr').has('select[name="facty_options[web_searches]"]').show();
+                    $('tr').has('select[name="facty_options[search_context]"]').show();
+                }
+            }
+            toggleModeOptions();
+            $('#fact-check-mode-select').on('change', toggleModeOptions);
+        });
+        </script>
+        <?php
     }
     
     public function enabled_render() {
@@ -952,8 +1348,29 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
         ?>
         <input type='password' name='facty_options[api_key]' value='<?php echo esc_attr($this->options['api_key']); ?>' style="width: 400px;">
         <button type="button" id="test-api-connection" class="button">Test Connection</button>
-        <p class="description">Your OpenRouter API key with web search access. Get one at <a href="https://openrouter.ai" target="_blank">openrouter.ai</a></p>
+        <p class="description">Your OpenRouter API key. Get one at <a href="https://openrouter.ai" target="_blank">openrouter.ai</a></p>
         <div id="api-test-result"></div>
+        <?php
+    }
+    
+    public function firecrawl_api_key_render() {
+        ?>
+        <input type='password' name='facty_options[firecrawl_api_key]' value='<?php echo esc_attr($this->options['firecrawl_api_key']); ?>' style="width: 400px;" placeholder="fc-YOUR_API_KEY">
+        <p class="description">Your Firecrawl API key (required for Firecrawl mode). Get one at <a href="https://www.firecrawl.dev" target="_blank">firecrawl.dev</a></p>
+        <?php
+    }
+    
+    public function firecrawl_searches_per_claim_render() {
+        ?>
+        <input type='number' name='facty_options[firecrawl_searches_per_claim]' value='<?php echo esc_attr($this->options['firecrawl_searches_per_claim']); ?>' min="1" max="5" style="width: 80px;">
+        <p class="description">Number of sources to search and scrape per claim (1-5). Higher = more accurate but slower</p>
+        <?php
+    }
+    
+    public function firecrawl_max_claims_render() {
+        ?>
+        <input type='number' name='facty_options[firecrawl_max_claims]' value='<?php echo esc_attr($this->options['firecrawl_max_claims']); ?>' min="3" max="15" style="width: 80px;">
+        <p class="description">Maximum claims to extract and verify (3-15). Higher = more thorough but slower</p>
         <?php
     }
     
@@ -991,7 +1408,7 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
                 <option value='<?php echo $num; ?>' <?php selected($this->options['web_searches'], $num); ?>><?php echo $num; ?> searches</option>
             <?php endforeach; ?>
         </select>
-        <p class="description">Maximum web search results to retrieve (affects cost: $4 per 1000 results)</p>
+        <p class="description">Maximum web search results (OpenRouter mode)</p>
         <?php
     }
     
@@ -1007,7 +1424,7 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
                 <option value='<?php echo $value; ?>' <?php selected($this->options['search_context'], $value); ?>><?php echo $label; ?></option>
             <?php endforeach; ?>
         </select>
-        <p class="description">Search context size - higher means more thorough but more expensive</p>
+        <p class="description">Search context size (OpenRouter mode)</p>
         <?php
     }
     
@@ -1155,7 +1572,7 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
                 }
                 
                 button.prop('disabled', true).text('Testing...');
-                resultDiv.html('<div style="color: #666; margin-top: 10px;">Testing API and web search connection...</div>');
+                resultDiv.html('<div style="color: #666; margin-top: 10px;">Testing API connection...</div>');
                 
                 $.ajax({
                     url: ajaxurl,
