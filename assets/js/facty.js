@@ -490,46 +490,68 @@ jQuery(document).ready(function ($) {
     }, 600000); // 10 minutes
   }
 
+  // IMPROVED: updateProgress with checkmarks
   function updateProgress(progressContainer, data) {
     var progress = data.progress || 0;
-    var step = data.step || "initializing";
-    var stepDetail = data.step_detail || "Processing...";
+    var stage = data.stage || "starting";
+    var message = data.message || "Processing...";
 
     // Update progress bar
     progressContainer.find(".progress-fill").css("width", progress + "%");
     progressContainer
       .find(".progress-percentage")
       .text(Math.round(progress) + "%");
-    progressContainer.find(".progress-title-text").text(stepDetail);
 
-    // Update step indicators
-    progressContainer
-      .find(".progress-step")
-      .removeClass("active complete error");
+    // Stage mapping
+    var stages = {
+      starting: { step: "starting", percent: 5 },
+      extracting: { step: "extracting", percent: 20 },
+      analyzing: { step: "analyzing", percent: 40 },
+      searching: { step: "searching", percent: 60 },
+      verifying: { step: "verifying", percent: 75 },
+      generating: { step: "generating", percent: 90 },
+    };
 
-    if (step === "extracting" || progress < 30) {
-      progressContainer.find('[data-step="extracting"]').addClass("active");
-      progressContainer
-        .find('[data-step="extracting"] .step-status')
-        .text(stepDetail);
-    } else if (step === "verifying" || (progress >= 30 && progress < 85)) {
-      progressContainer.find('[data-step="extracting"]').addClass("complete");
-      progressContainer.find('[data-step="verifying"]').addClass("active");
-      progressContainer
-        .find('[data-step="verifying"] .step-status')
-        .text(stepDetail);
-    } else if (step === "generating" || progress >= 85) {
-      progressContainer.find('[data-step="extracting"]').addClass("complete");
-      progressContainer.find('[data-step="verifying"]').addClass("complete");
-      progressContainer.find('[data-step="generating"]').addClass("active");
-      progressContainer
-        .find('[data-step="generating"] .step-status')
-        .text(stepDetail);
-    }
+    var currentStage = stages[stage] || {
+      step: "analyzing",
+      percent: progress,
+    };
 
-    if (step === "complete" || progress === 100) {
+    // Mark steps as complete or active with CHECKMARKS
+    progressContainer.find(".progress-step").each(function () {
+      var $step = $(this);
+      var stepStage = $step.data("stage");
+      var stepIcon = $step.find(".step-icon");
+
+      if (!stepStage) return;
+
+      var stageInfo = stages[stepStage];
+      if (!stageInfo) return;
+
+      // Clear all states
+      $step.removeClass("active complete error");
+
+      if (stageInfo.percent < currentStage.percent) {
+        // Step is complete - show checkmark
+        $step.addClass("complete");
+        stepIcon.html("✓");
+        $step.find(".step-status").text("Complete");
+      } else if (stepStage === stage) {
+        // Current step - show as active
+        $step.addClass("active");
+        $step.find(".step-status").text(message);
+      } else {
+        // Future step - reset icon
+        var stepNumber = $step.index() + 1;
+        stepIcon.text(stepNumber);
+        $step.find(".step-status").text("Waiting...");
+      }
+    });
+
+    if (stage === "complete" || progress >= 100) {
       progressContainer.find(".progress-step").addClass("complete");
-      progressContainer.find(".progress-title-text").text("Complete!");
+      progressContainer.find(".step-icon").html("✓");
+      progressContainer.find(".step-status").text("Complete");
     }
 
     if (data.status === "error") {
@@ -537,38 +559,7 @@ jQuery(document).ready(function ($) {
     }
   }
 
-  // Helper functions
-  function isValidEmail(email) {
-    var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
-
-  function showFormError(element, message) {
-    element.addClass("input-error");
-    element.after(
-      '<div class="error-message">' + escapeHtml(message) + "</div>"
-    );
-  }
-
-  function showSuccessMessage(container, message) {
-    var existingMessage = container.find(".success-message");
-    if (existingMessage.length) {
-      existingMessage.text(message);
-    } else {
-      container
-        .find(".fact-check-box")
-        .prepend(
-          '<div class="success-message">' + escapeHtml(message) + "</div>"
-        );
-    }
-
-    setTimeout(function () {
-      container.find(".success-message").fadeOut(function () {
-        $(this).remove();
-      });
-    }, 3000);
-  }
-
+  // IMPROVED: displayResults with user-focused layout
   function displayResults(data, container) {
     var now = new Date();
     var timeString =
@@ -624,31 +615,92 @@ jQuery(document).ready(function ($) {
     html += "</div>";
     html += "</div>";
 
-    // Issues section
+    // USER-FOCUSED Issues section
     if (data.issues && data.issues.length > 0) {
       html += '<div class="issues-section">';
       html +=
-        '<div class="issues-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>Issues Found (' +
+        '<div class="issues-title">⚠️ Issues Found (' +
         data.issues.length +
         ")</div>";
       data.issues.forEach(function (issue) {
-        html += '<div class="issue-item">';
+        var severityClass = "severity-" + (issue.severity || "medium");
+        html += '<div class="issue-item ' + severityClass + '">';
+
+        // Header with type and severity
+        html += '<div class="issue-header">';
         html +=
-          '<div class="issue-type">' +
+          '<span class="issue-type">' +
           escapeHtml(issue.type || "Issue") +
-          "</div>";
+          "</span>";
         html +=
-          '<div class="issue-description">' +
-          escapeHtml(issue.description || "") +
-          "</div>";
-        if (issue.suggestion) {
+          '<span class="issue-severity ' +
+          severityClass +
+          '">' +
+          (issue.severity || "medium") +
+          " priority</span>";
+        html += "</div>";
+
+        // What article says
+        if (issue.what_article_says || issue.claim) {
           html +=
-            '<div class="issue-suggestion"><strong>Suggestion:</strong> ' +
-            escapeHtml(issue.suggestion) +
+            '<div class="issue-claim"><strong>📰 Article says:</strong><br>"' +
+            escapeHtml(issue.what_article_says || issue.claim) +
+            '"</div>';
+        }
+
+        // The problem
+        if (issue.the_problem || issue.description) {
+          html +=
+            '<div class="issue-problem"><strong>❌ The problem:</strong><br>' +
+            escapeHtml(issue.the_problem || issue.description) +
             "</div>";
         }
+
+        // Actual facts
+        if (issue.actual_facts || issue.correct_information) {
+          html +=
+            '<div class="issue-facts"><strong>✅ Actual facts:</strong><br>' +
+            escapeHtml(issue.actual_facts || issue.correct_information) +
+            "</div>";
+        }
+
+        // Why it matters
+        if (issue.why_it_matters || issue.reader_impact) {
+          html +=
+            '<div class="issue-impact"><strong>💡 Why this matters:</strong><br>' +
+            escapeHtml(issue.why_it_matters || issue.reader_impact) +
+            "</div>";
+        }
+
         html += "</div>";
       });
+      html += "</div>";
+    }
+
+    // NEW: Verified Facts section
+    if (data.verified_facts && data.verified_facts.length > 0) {
+      html += '<div class="verified-section">';
+      html +=
+        '<div class="verified-title">✅ Verified Claims (' +
+        data.verified_facts.length +
+        ")</div>";
+      html += '<div class="verified-list">';
+      data.verified_facts.forEach(function (fact) {
+        html += '<div class="verified-item">';
+        html += '<span class="verified-icon">✓</span>';
+        html += '<div class="verified-content">';
+        html +=
+          '<div class="verified-claim">' + escapeHtml(fact.claim) + "</div>";
+        if (fact.confidence) {
+          html +=
+            '<div class="verified-confidence">Confidence: <strong>' +
+            fact.confidence +
+            "</strong></div>";
+        }
+        html += "</div>";
+        html += "</div>";
+      });
+      html += "</div>";
       html += "</div>";
     }
 
@@ -656,17 +708,27 @@ jQuery(document).ready(function ($) {
     if (data.sources && data.sources.length > 0) {
       html += '<div class="sources-section">';
       html +=
-        '<div class="sources-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>Sources Verified (' +
+        '<div class="sources-title">🔗 Sources Checked (' +
         data.sources.length +
         ")</div>";
       html += '<div class="sources-list">';
       data.sources.forEach(function (source) {
+        var credibilityClass =
+          "credibility-" + (source.credibility || "medium");
+        html += '<div class="source-item ' + credibilityClass + '">';
         html +=
-          '<div class="source-item"><a href="' +
+          '<a href="' +
           escapeHtml(source.url || "#") +
           '" target="_blank" rel="nofollow" class="source-link">' +
           escapeHtml(source.title || source.url || "Source") +
-          "</a></div>";
+          "</a>";
+        if (source.credibility) {
+          html +=
+            '<span class="source-credibility">' +
+            source.credibility +
+            "</span>";
+        }
+        html += "</div>";
       });
       html += "</div>";
       html += "</div>";
@@ -684,7 +746,11 @@ jQuery(document).ready(function ($) {
     html += '<small style="color: #94a3b8;">Analyzed: ' + timeString;
     if (data.mode) {
       var modeLabel =
-        data.mode === "firecrawl" ? "Deep Research Mode" : "Quick Check Mode";
+        data.mode === "firecrawl"
+          ? "Deep Research Mode"
+          : data.mode === "jina"
+          ? "Ultra-Fast Mode"
+          : "Quick Check Mode";
       html += " • " + modeLabel;
     }
     html += "</small>";

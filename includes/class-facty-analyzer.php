@@ -1,7 +1,7 @@
 <?php
 /**
  * Facty OpenRouter Analyzer
- * Handles fact-checking using OpenRouter API with web search
+ * IMPROVED: Better scoring, user-focused reports, faster processing
  */
 
 if (!defined('ABSPATH')) {
@@ -24,136 +24,59 @@ class Facty_Analyzer {
         $model = $this->options['model'];
         
         if ($task_id) {
-            $this->update_progress($task_id, 20, 'analyzing', 'Analyzing article with AI...');
+            $this->update_progress($task_id, 20, 'analyzing', 'Analyzing with AI...');
         }
         
         $current_date = current_time('F j, Y');
-        $website_name = get_bloginfo('name');
-        $website_url = home_url();
         
-        // Comprehensive fact-checking prompt
-        $prompt = "You are a professional fact-checker working for {$website_name}.
+        // IMPROVED: Shorter, faster, user-focused prompt
+        $prompt = "You are analyzing this article to help READERS understand its accuracy. Today is {$current_date}.
 
-CONTEXT INFORMATION:
-- Today's Date: {$current_date}
-- Website: {$website_name} ({$website_url})
-- Your Role: Verify factual accuracy of published content
+STEP 1: Detect if SATIRE (absurd scenarios, obvious jokes). If satire, return: {\"score\":100,\"status\":\"Satire\",\"description\":\"This is satirical content.\",\"issues\":[],\"sources\":[]}
 
-═══════════════════════════════════════════════════════════════
-CRITICAL STEP 1: CONTENT TYPE DETECTION
-═══════════════════════════════════════════════════════════════
+STEP 2: For real articles, analyze factual claims and score PRECISELY:
+- 95-100: Completely accurate, well-sourced
+- 85-94: Accurate with minor issues  
+- 70-84: Mostly accurate, some problems
+- 50-69: Mixed - significant concerns
+- 30-49: Mostly inaccurate
+- 0-29: False or highly misleading
 
-BEFORE analyzing, determine the content type:
-
-🎭 SATIRE/PARODY/COMEDY Indicators:
-   - Absurd or impossible scenarios
-   - Obvious exaggeration for humor
-   - Fake advice columns or letters
-   - Impersonating public figures in humorous way
-   - \"The Onion\"-style writing
-   - Clearly joke headlines or premises
-   
-📰 NEWS/FACTUAL Indicators:
-   - Reporting real events
-   - Citing real sources
-   - Attempting serious journalism
-   - No obvious humor or satire markers
-
-💭 OPINION/EDITORIAL Indicators:
-   - Personal viewpoint pieces
-   - Clearly marked as opinion
-   - Subjective analysis
-
-IF SATIRE/COMEDY DETECTED:
-Return immediately with:
-{
-    \"content_type\": \"satire\",
-    \"score\": 100,
-    \"status\": \"Satire/Parody - Not Subject to Fact-Checking\",
-    \"description\": \"This is satirical or comedic content, not factual reporting.\",
-    \"issues\": [],
-    \"sources\": []
-}
-
-IF OPINION/EDITORIAL DETECTED:
-STILL fact-check the factual claims used within the opinion piece. Opinions should be verified for accuracy of supporting facts.
-
-═══════════════════════════════════════════════════════════════
-STEP 2: DETAILED FACT-CHECKING (For News/Factual/Opinion Content)
-═══════════════════════════════════════════════════════════════
-
-Your Analysis Process:
-1. IDENTIFY individual factual claims (not opinions)
-2. VERIFY each claim against current information
-3. EVALUATE accuracy with specific examples
-4. PROVIDE actionable corrections
-
-ARTICLE CONTENT TO ANALYZE:
+ARTICLE:
 {$content}
 
-═══════════════════════════════════════════════════════════════
-REQUIRED OUTPUT FORMAT
-═══════════════════════════════════════════════════════════════
-
-Return ONLY valid JSON (no markdown, no code blocks):
-
+Return pure JSON (no markdown):
 {
-    \"content_type\": \"news\" | \"opinion\" | \"satire\",
-    \"score\": 0-100,
-    \"status\": \"Accurate\" | \"Mostly Accurate\" | \"Partially Accurate\" | \"Mostly Inaccurate\" | \"False\" | \"Satire - Not Subject to Fact-Checking\",
-    \"description\": \"2-3 sentence summary of findings\",
-    
-    \"detailed_analysis\": {
-        \"claims_identified\": 5,
-        \"claims_verified\": 4,
-        \"claims_false\": 1,
-        \"overall_assessment\": \"Detailed paragraph explaining your analysis\"
-    },
-    
+    \"score\": <precise 0-100 integer>,
+    \"status\": \"Verified\" | \"Mostly Accurate\" | \"Needs Review\" | \"Multiple Errors\" | \"False\" | \"Satire\",
+    \"description\": \"One sentence for readers\",
     \"issues\": [
         {
-            \"claim\": \"The specific claim from the article\",
-            \"type\": \"Factual Error\" | \"Outdated Information\" | \"Misleading\" | \"Unverified\" | \"Missing Context\",
+            \"claim\": \"Exact quote\",
+            \"type\": \"Factual Error\" | \"Outdated\" | \"Misleading\" | \"Unverified\" | \"Missing Context\",
             \"severity\": \"high\" | \"medium\" | \"low\",
-            \"description\": \"Detailed explanation of what's wrong\",
-            \"correct_information\": \"What the correct information should be\",
-            \"suggestion\": \"How to fix this\"
+            \"what_article_says\": \"The claim\",
+            \"the_problem\": \"Why it's wrong\",
+            \"actual_facts\": \"What's actually true\",
+            \"why_it_matters\": \"Impact on readers\"
         }
     ],
-    
-    \"verified_claims\": [
-        {
-            \"claim\": \"Claim that checked out as accurate\",
-            \"verification\": \"Why this is correct\"
-        }
+    \"verified_facts\": [
+        {\"claim\": \"Accurate claim\", \"confidence\": \"high\"}
     ],
-    
     \"sources\": [
-        {
-            \"title\": \"Actual source title\",
-            \"url\": \"https://actual-url.com\",
-            \"credibility\": \"high\" | \"medium\" | \"low\",
-            \"relevance\": \"What this source verifies\"
-        }
-    ],
-    
-    \"context_notes\": [
-        \"Important context point 1\",
-        \"Important context point 2\"
+        {\"title\": \"Source\", \"url\": \"https://...\", \"credibility\": \"high\"}
     ]
 }
 
-SCORING GUIDELINES:
-90-100: Highly accurate, no significant errors
-75-89: Mostly accurate, minor issues
-60-74: Partially accurate, some significant issues
-40-59: Multiple factual errors
-0-39: Mostly or entirely false
-
-Remember: You're checking facts as of {$current_date}. Information changes over time.";
+RULES:
+- Unverified ≠ False (if you can't verify, say that, don't call it false)
+- Write for readers, not editors  
+- Use precise scores (not always 50)
+- Be fair: good articles get 85-100";
         
         if ($task_id) {
-            $this->update_progress($task_id, 60, 'verifying', 'Searching and verifying facts...');
+            $this->update_progress($task_id, 60, 'verifying', 'Verifying facts...');
         }
         
         $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
@@ -168,14 +91,14 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
                 'messages' => array(
                     array('role' => 'user', 'content' => $prompt)
                 ),
-                'max_tokens' => 4000,
+                'max_tokens' => 3000, // Reduced from 4000 for speed
                 'temperature' => 0.2
             )),
-            'timeout' => 120
+            'timeout' => 90 // Reduced from 120 for speed
         ));
         
         if ($task_id) {
-            $this->update_progress($task_id, 90, 'generating', 'Formatting final report...');
+            $this->update_progress($task_id, 90, 'generating', 'Formatting report...');
         }
         
         if (is_wp_error($response)) {
@@ -222,6 +145,7 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
             'status' => 'Unknown',
             'description' => 'No description provided',
             'issues' => array(),
+            'verified_facts' => array(),
             'sources' => array()
         ), $result);
         
