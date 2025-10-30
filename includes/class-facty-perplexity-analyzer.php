@@ -2,7 +2,7 @@
 /**
  * Facty Perplexity Analyzer
  * Ultra-fast, accurate fact-checking using Perplexity Sonar Pro with real-time web search
- * OPTIMIZED: Single API call for maximum speed and efficiency
+ * OPTIMIZED: Single API call for maximum speed and efficiency with strict recency filters
  */
 
 if (!defined('ABSPATH')) {
@@ -84,20 +84,32 @@ class Facty_Perplexity_Analyzer {
      * Build optimized fact-check prompt for single-call verification
      */
     private function build_fact_check_prompt($content, $current_date) {
-        return "You are an expert fact-checker analyzing this article to help READERS understand its accuracy. Today is {$current_date}.
+        return "You are an expert fact-checker analyzing this article to help READERS understand its accuracy. 
+
+**CRITICAL: TODAY'S DATE IS {$current_date}**
+
+You MUST use ONLY real-time web search with sources from the LAST 7 DAYS to verify current facts. If verifying historical facts, cross-reference with multiple recent authoritative sources dated within the last week.
 
 **YOUR TASK:**
 1. Identify 5-10 key FACTUAL claims (skip opinions/predictions)
-2. Use real-time web search to verify EACH claim
-3. Assign a PRECISE accuracy score (0-100)
-4. Return structured JSON
+2. Use ONLY real-time web search from the LAST WEEK to verify EACH claim
+3. For political/current events: VERIFY the current office holders, dates, and circumstances as of {$current_date}
+4. Assign a PRECISE accuracy score (0-100)
+5. Return structured JSON
+
+**CRITICAL VERIFICATION REQUIREMENTS:**
+- For claims about current office holders (presidents, officials): Verify who holds the position AS OF {$current_date}
+- For recent events: Only accept sources dated within the last 7 days
+- For dates/timelines: Verify the actual current date is {$current_date}
+- Cross-reference multiple recent sources for accuracy
+- Flag any claims that reference outdated information
 
 **SCORING GUIDE** (Be precise - not everything is 50):
-- 95-100: Completely accurate, well-sourced, current
+- 95-100: Completely accurate, well-sourced with recent sources, current as of {$current_date}
 - 85-94: Accurate with minor/outdated details
 - 70-84: Mostly accurate, some problems
 - 50-69: Mixed - significant concerns
-- 30-49: Mostly inaccurate
+- 30-49: Mostly inaccurate or outdated
 - 0-29: False or highly misleading
 
 **ARTICLE:**
@@ -116,7 +128,7 @@ class Facty_Perplexity_Analyzer {
             \"severity\": \"high\" | \"medium\" | \"low\",
             \"what_article_says\": \"The problematic claim\",
             \"the_problem\": \"Why it's inaccurate/misleading\",
-            \"actual_facts\": \"What's actually true (with sources)\",
+            \"actual_facts\": \"What's actually true as of {$current_date} (with recent sources)\",
             \"why_it_matters\": \"Impact on readers\"
         }
     ],
@@ -137,12 +149,15 @@ class Facty_Perplexity_Analyzer {
 ```
 
 **CRITICAL RULES:**
-- Unverified ≠ False (if can't verify, mark as \"Unverified\", don't call it false)
+- ONLY use sources dated within the last 7 days for current events
+- Verify current office holders as of {$current_date} - DO NOT use outdated information
+- For political claims: Cross-check with multiple recent authoritative sources
+- Unverified ≠ False (if can't verify with recent sources, mark as \"Unverified\")
 - Use precise scores (not always 50/70/85)
 - Be fair: truly accurate articles deserve 90-100
 - Include ONLY the JSON in your response (no markdown formatting)
 - Use YOUR real-time web search to verify current facts
-- Cite credible sources you actually found";
+- Cite credible sources you actually found dated within the last week";
     }
     
     /**
@@ -159,7 +174,7 @@ class Facty_Perplexity_Analyzer {
                 'messages' => array(
                     array(
                         'role' => 'system',
-                        'content' => 'You are a precise fact-checker that returns only valid JSON. Use your real-time web search to verify claims.'
+                        'content' => 'You are a precise fact-checker that returns only valid JSON. Use your real-time web search to verify claims with sources from the last 7 days only.'
                     ),
                     array(
                         'role' => 'user',
@@ -169,7 +184,7 @@ class Facty_Perplexity_Analyzer {
                 'temperature' => 0.2,
                 'max_tokens' => 4000,
                 'return_citations' => true,
-                'search_recency_filter' => 'month' // Focus on recent sources
+                'search_recency_filter' => 'week' // CRITICAL: Changed from 'month' to 'week' for recent sources only
             )),
             'timeout' => 90
         ));
