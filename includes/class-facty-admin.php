@@ -170,6 +170,22 @@ class Facty_Admin {
         );
         
         add_settings_field(
+            'perplexity_api_key',
+            'Perplexity API Key',
+            array($this, 'render_perplexity_key_field'),
+            'facty-settings',
+            'facty_api_section'
+        );
+        
+        add_settings_field(
+            'perplexity_model',
+            'Perplexity Model',
+            array($this, 'render_perplexity_model_field'),
+            'facty-settings',
+            'facty_api_section'
+        );
+        
+        add_settings_field(
             'firecrawl_settings',
             'Firecrawl Settings',
             array($this, 'render_firecrawl_settings_field'),
@@ -274,6 +290,8 @@ class Facty_Admin {
         $sanitized['fact_check_mode'] = sanitize_text_field($input['fact_check_mode']);
         $sanitized['firecrawl_api_key'] = sanitize_text_field($input['firecrawl_api_key']);
         $sanitized['jina_api_key'] = sanitize_text_field($input['jina_api_key']);
+        $sanitized['perplexity_api_key'] = sanitize_text_field($input['perplexity_api_key']);
+        $sanitized['perplexity_model'] = sanitize_text_field($input['perplexity_model']);
         $sanitized['firecrawl_searches_per_claim'] = intval($input['firecrawl_searches_per_claim']);
         $sanitized['firecrawl_max_claims'] = intval($input['firecrawl_max_claims']);
         
@@ -504,11 +522,13 @@ class Facty_Admin {
         ?>
         <select name="facty_options[fact_check_mode]" class="regular-text">
             <option value="openrouter" <?php selected($mode, 'openrouter'); ?>>OpenRouter (Quick Check - 60-90s)</option>
+            <option value="perplexity" <?php selected($mode, 'perplexity'); ?>>Perplexity Sonar (Ultra-Fast - 20-40s) ⚡ NEW!</option>
             <option value="jina" <?php selected($mode, 'jina'); ?>>Jina DeepSearch (Ultra-Fast - 30-45s)</option>
             <option value="firecrawl" <?php selected($mode, 'firecrawl'); ?>>Firecrawl (Deep Research - 2-3min)</option>
         </select>
         <p class="description">
             <strong>OpenRouter:</strong> Balanced speed and accuracy using AI + web search<br>
+            <strong>Perplexity Sonar:</strong> Lightning-fast with real-time web search - Best for speed & accuracy! ⚡<br>
             <strong>Jina DeepSearch:</strong> Ultra-fast AI-powered search, read & reason fact-checking<br>
             <strong>Firecrawl:</strong> Most thorough research with deep source analysis
         </p>
@@ -572,6 +592,36 @@ class Facty_Admin {
         <?php endif; ?>
         <p class="description">
             Required for Jina DeepSearch mode. Get your FREE API key (10M free tokens) at <a href="https://jina.ai/?sui=apikey" target="_blank">jina.ai</a> - Ultra-fast AI-powered fact checking with search, read & reason!
+        </p>
+        <?php
+    }
+    
+    public function render_perplexity_key_field() {
+        $api_key = isset($this->options['perplexity_api_key']) ? $this->options['perplexity_api_key'] : '';
+        $has_key = !empty($api_key);
+        ?>
+        <input type="password" name="facty_options[perplexity_api_key]" value="<?php echo esc_attr($api_key); ?>" class="regular-text" placeholder="pplx-...">
+        <?php if ($has_key): ?>
+            <span class="facty-status-badge facty-status-success">✓ Key configured</span>
+        <?php endif; ?>
+        <p class="description">
+            Required for Perplexity mode. Get your API key at <a href="https://www.perplexity.ai/settings/api" target="_blank">perplexity.ai</a> - Best for ultra-fast fact-checking with real-time web search! ⚡
+        </p>
+        <?php
+    }
+    
+    public function render_perplexity_model_field() {
+        $model = isset($this->options['perplexity_model']) ? $this->options['perplexity_model'] : 'sonar-pro';
+        ?>
+        <select name="facty_options[perplexity_model]" class="regular-text">
+            <option value="sonar-pro" <?php selected($model, 'sonar-pro'); ?>>Sonar Pro (Recommended - Most Accurate)</option>
+            <option value="sonar" <?php selected($model, 'sonar'); ?>>Sonar (Faster & Cheaper)</option>
+            <option value="sonar-reasoning" <?php selected($model, 'sonar-reasoning'); ?>>Sonar Reasoning (Complex Analysis)</option>
+        </select>
+        <p class="description">
+            <strong>Sonar Pro:</strong> Best accuracy, outperforms GPT-4/Claude on fact-checking benchmarks<br>
+            <strong>Sonar:</strong> 3x cheaper, still excellent for most fact-checking<br>
+            <strong>Sonar Reasoning:</strong> Advanced reasoning for complex claims
         </p>
         <?php
     }
