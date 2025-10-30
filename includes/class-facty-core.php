@@ -52,6 +52,7 @@ class Facty_Core {
             'require_email' => true,
             'fact_check_mode' => 'openrouter',
             'firecrawl_api_key' => '',
+            'jina_api_key' => '',
             'firecrawl_searches_per_claim' => 3,
             'firecrawl_max_claims' => 10
         );

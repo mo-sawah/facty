@@ -162,6 +162,14 @@ class Facty_Admin {
         );
         
         add_settings_field(
+            'jina_api_key',
+            'Jina API Key',
+            array($this, 'render_jina_key_field'),
+            'facty-settings',
+            'facty_api_section'
+        );
+        
+        add_settings_field(
             'firecrawl_settings',
             'Firecrawl Settings',
             array($this, 'render_firecrawl_settings_field'),
@@ -267,6 +275,7 @@ class Facty_Admin {
         $sanitized['require_email'] = isset($input['require_email']) ? true : false;
         $sanitized['fact_check_mode'] = sanitize_text_field($input['fact_check_mode']);
         $sanitized['firecrawl_api_key'] = sanitize_text_field($input['firecrawl_api_key']);
+        $sanitized['jina_api_key'] = sanitize_text_field($input['jina_api_key']);
         $sanitized['firecrawl_searches_per_claim'] = intval($input['firecrawl_searches_per_claim']);
         $sanitized['firecrawl_max_claims'] = intval($input['firecrawl_max_claims']);
         
@@ -308,6 +317,7 @@ class Facty_Admin {
                 <h3>📚 Need Help?</h3>
                 <p>
                     <strong>OpenRouter API Key:</strong> Get your key at <a href="https://openrouter.ai" target="_blank">openrouter.ai</a><br>
+                    <strong>Jina API Key:</strong> Get your FREE key at <a href="https://jina.ai" target="_blank">jina.ai</a> (Ultra-fast mode!)<br>
                     <strong>Firecrawl API Key:</strong> Get your key at <a href="https://firecrawl.dev" target="_blank">firecrawl.dev</a><br>
                     <strong>Support:</strong> Visit <a href="https://sawahsolutions.com" target="_blank">sawahsolutions.com</a>
                 </p>
@@ -495,12 +505,14 @@ class Facty_Admin {
         $mode = isset($this->options['fact_check_mode']) ? $this->options['fact_check_mode'] : 'openrouter';
         ?>
         <select name="facty_options[fact_check_mode]" class="regular-text">
-            <option value="openrouter" <?php selected($mode, 'openrouter'); ?>>OpenRouter (Quick Web Search)</option>
-            <option value="firecrawl" <?php selected($mode, 'firecrawl'); ?>>Firecrawl (Deep Research)</option>
+            <option value="openrouter" <?php selected($mode, 'openrouter'); ?>>OpenRouter (Quick Check - 60-90s)</option>
+            <option value="jina" <?php selected($mode, 'jina'); ?>>Jina Grounding (Ultra-Fast - 20-30s)</option>
+            <option value="firecrawl" <?php selected($mode, 'firecrawl'); ?>>Firecrawl (Deep Research - 2-3min)</option>
         </select>
         <p class="description">
-            <strong>OpenRouter:</strong> Fast fact-checking using web search (requires OpenRouter API key)<br>
-            <strong>Firecrawl:</strong> Deep multi-step research with source scraping (requires both API keys)
+            <strong>OpenRouter:</strong> Balanced speed and accuracy using AI + web search<br>
+            <strong>Jina:</strong> Ultra-fast fact grounding (NEW - much faster!)<br>
+            <strong>Firecrawl:</strong> Most thorough research with deep source analysis
         </p>
         <?php
     }
@@ -548,6 +560,20 @@ class Facty_Admin {
         <?php endif; ?>
         <p class="description">
             Required for Firecrawl mode. Get your key at <a href="https://firecrawl.dev" target="_blank">firecrawl.dev</a>
+        </p>
+        <?php
+    }
+    
+    public function render_jina_key_field() {
+        $api_key = isset($this->options['jina_api_key']) ? $this->options['jina_api_key'] : '';
+        $has_key = !empty($api_key);
+        ?>
+        <input type="password" name="facty_options[jina_api_key]" value="<?php echo esc_attr($api_key); ?>" class="regular-text" placeholder="jina_...">
+        <?php if ($has_key): ?>
+            <span class="facty-status-badge facty-status-success">✓ Key configured</span>
+        <?php endif; ?>
+        <p class="description">
+            Required for Jina mode. Get your FREE key at <a href="https://jina.ai/" target="_blank">jina.ai</a> - Ultra-fast fact checking!
         </p>
         <?php
     }

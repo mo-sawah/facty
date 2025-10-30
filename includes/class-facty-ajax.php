@@ -166,7 +166,11 @@ class Facty_AJAX {
             }
             
             // Analyze content based on mode
-            if ($mode === 'firecrawl' && !empty($options['firecrawl_api_key'])) {
+            if ($mode === 'jina' && !empty($options['jina_api_key'])) {
+                require_once FACTY_PLUGIN_PATH . 'includes/class-facty-jina-analyzer.php';
+                $analyzer = new Facty_Jina_Analyzer($options);
+                $result = $analyzer->analyze($content, $task_id);
+            } elseif ($mode === 'firecrawl' && !empty($options['firecrawl_api_key'])) {
                 $analyzer = new Facty_Firecrawl($options);
                 $result = $analyzer->analyze($content, $task_id);
             } else {
