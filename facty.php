@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: facty
+ * Plugin Name: Facty
  * Description: AI-powered fact-checking plugin that verifies article accuracy using OpenRouter with web search or Firecrawl for deep multi-step research
  * Version: 4.1.0
  * Author: Mohamed Sawah
