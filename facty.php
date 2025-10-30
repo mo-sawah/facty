@@ -15,11 +15,11 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('FACT_CHECKER_VERSION', '3.0.5');
-define('FACT_CHECKER_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('FACT_CHECKER_PLUGIN_PATH', plugin_dir_path(__FILE__));
+define('FACTY_VERSION', '3.0.5');
+define('FACTY_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('FACTY_PLUGIN_PATH', plugin_dir_path(__FILE__));
 
-class FactChecker {
+class Facty {
     
     private $options;
     
@@ -29,13 +29,13 @@ class FactChecker {
         add_action('admin_init', array($this, 'settings_init'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
         add_action('admin_enqueue_scripts', array($this, 'admin_enqueue_scripts'));
-        add_action('wp_ajax_fact_check_article', array($this, 'ajax_fact_check'));
-        add_action('wp_ajax_nopriv_fact_check_article', array($this, 'ajax_fact_check'));
-        add_action('wp_ajax_test_fact_checker_api', array($this, 'ajax_test_api'));
-        add_action('wp_ajax_fact_checker_email_submit', array($this, 'ajax_email_submit'));
-        add_action('wp_ajax_nopriv_fact_checker_email_submit', array($this, 'ajax_email_submit'));
-        add_action('wp_ajax_fact_checker_signup', array($this, 'ajax_signup'));
-        add_action('wp_ajax_nopriv_fact_checker_signup', array($this, 'ajax_signup'));
+        add_action('wp_ajax_facty_check_article', array($this, 'ajax_fact_check'));
+        add_action('wp_ajax_nopriv_facty_check_article', array($this, 'ajax_fact_check'));
+        add_action('wp_ajax_test_facty_api', array($this, 'ajax_test_api'));
+        add_action('wp_ajax_facty_email_submit', array($this, 'ajax_email_submit'));
+        add_action('wp_ajax_nopriv_facty_email_submit', array($this, 'ajax_email_submit'));
+        add_action('wp_ajax_facty_signup', array($this, 'ajax_signup'));
+        add_action('wp_ajax_nopriv_facty_signup', array($this, 'ajax_signup'));
         
         // Add fact checker to content
         add_filter('the_content', array($this, 'add_fact_checker_to_content'));
@@ -61,12 +61,12 @@ class FactChecker {
             'require_email' => true
         );
         
-        $saved_options = get_option('fact_checker_options', array());
+        $saved_options = get_option('facty_options', array());
         $this->options = array_merge($default_options, $saved_options);
         
         // Update the options in database if new defaults were added
         if (count($this->options) > count($saved_options)) {
-            update_option('fact_checker_options', $this->options);
+            update_option('facty_options', $this->options);
         }
     }
     
@@ -74,8 +74,8 @@ class FactChecker {
         // Create cache table
         global $wpdb;
         
-        $cache_table = $wpdb->prefix . 'fact_checker_cache';
-        $users_table = $wpdb->prefix . 'fact_checker_users';
+        $cache_table = $wpdb->prefix . 'facty_cache';
+        $users_table = $wpdb->prefix . 'facty_users';
         
         $charset_collate = $wpdb->get_charset_collate();
         
@@ -110,23 +110,23 @@ class FactChecker {
     public function enqueue_scripts() {
         if (is_single() && $this->options['enabled']) {
             wp_enqueue_style(
-                'fact-checker-style',
-                FACT_CHECKER_PLUGIN_URL . 'assets/css/fact-checker.css',
+                'facty-style',
+                FACTY_PLUGIN_URL . 'assets/css/facty.css',
                 array(),
-                FACT_CHECKER_VERSION
+                FACTY_VERSION
             );
             
             wp_enqueue_script(
-                'fact-checker-script',
-                FACT_CHECKER_PLUGIN_URL . 'assets/js/fact-checker.js',
+                'facty-script',
+                FACTY_PLUGIN_URL . 'assets/js/facty.js',
                 array('jquery'),
-                FACT_CHECKER_VERSION,
+                FACTY_VERSION,
                 true
             );
             
-            wp_localize_script('fact-checker-script', 'factChecker', array(
+            wp_localize_script('facty-script', 'factChecker', array(
                 'ajaxUrl' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('fact_checker_nonce'),
+                'nonce' => wp_create_nonce('facty_nonce'),
                 'theme_mode' => isset($this->options['theme_mode']) ? $this->options['theme_mode'] : 'light',
                 'require_email' => $this->options['require_email'],
                 'free_limit' => $this->options['free_limit'],
@@ -143,7 +143,7 @@ class FactChecker {
     }
     
     public function admin_enqueue_scripts($hook) {
-        if ($hook === 'settings_page_fact-checker') {
+        if ($hook === 'settings_page_facty') {
             wp_enqueue_script('jquery');
         }
     }
@@ -276,7 +276,7 @@ class FactChecker {
         }
         
         global $wpdb;
-        $table_name = $wpdb->prefix . 'fact_checker_users';
+        $table_name = $wpdb->prefix . 'facty_users';
         $ip_address = $this->get_client_ip();
         
         // Check by cookie first (email)
@@ -340,7 +340,7 @@ class FactChecker {
     }
     
     public function ajax_email_submit() {
-        check_ajax_referer('fact_checker_nonce', 'nonce');
+        check_ajax_referer('facty_nonce', 'nonce');
         
         $email = sanitize_email($_POST['email']);
         $ip_address = $this->get_client_ip();
@@ -351,7 +351,7 @@ class FactChecker {
         }
         
         global $wpdb;
-        $table_name = $wpdb->prefix . 'fact_checker_users';
+        $table_name = $wpdb->prefix . 'facty_users';
         
         // Check if email already exists
         $existing = $wpdb->get_row($wpdb->prepare(
@@ -391,7 +391,7 @@ class FactChecker {
     }
     
     public function ajax_signup() {
-        check_ajax_referer('fact_checker_nonce', 'nonce');
+        check_ajax_referer('facty_nonce', 'nonce');
         
         $name = sanitize_text_field($_POST['name']);
         $email = sanitize_email($_POST['email']);
@@ -420,7 +420,7 @@ class FactChecker {
         
         // Update fact checker user record
         global $wpdb;
-        $table_name = $wpdb->prefix . 'fact_checker_users';
+        $table_name = $wpdb->prefix . 'facty_users';
         
         $wpdb->replace(
             $table_name,
@@ -441,7 +441,7 @@ class FactChecker {
     }
     
     public function ajax_fact_check() {
-        check_ajax_referer('fact_checker_nonce', 'nonce');
+        check_ajax_referer('facty_nonce', 'nonce');
         
         $post_id = intval($_POST['post_id']);
         $post = get_post($post_id);
@@ -502,7 +502,7 @@ class FactChecker {
         }
         
         global $wpdb;
-        $table_name = $wpdb->prefix . 'fact_checker_users';
+        $table_name = $wpdb->prefix . 'facty_users';
         
         if (!empty($user_status['email'])) {
             $wpdb->query($wpdb->prepare(
@@ -523,7 +523,7 @@ class FactChecker {
         $online_model = $model . ':online';
         
         // Prepare the comprehensive fact-checking prompt
-        $prompt = "You are a professional fact-checker. Analyze the following article content using web search to verify factual claims.
+        $prompt = "You are a professional facty. Analyze the following article content using web search to verify factual claims.
 
 IMPORTANT INSTRUCTIONS:
 1. Use web search to verify key factual claims in the article
@@ -673,7 +673,7 @@ Focus on factual accuracy and provide real sources from your web search results.
         global $wpdb;
         
         $content_hash = hash('sha256', $content);
-        $table_name = $wpdb->prefix . 'fact_checker_cache';
+        $table_name = $wpdb->prefix . 'facty_cache';
         
         $cached = $wpdb->get_var($wpdb->prepare(
             "SELECT result FROM $table_name WHERE post_id = %d AND content_hash = %s AND created_at > %s",
@@ -689,7 +689,7 @@ Focus on factual accuracy and provide real sources from your web search results.
         global $wpdb;
         
         $content_hash = hash('sha256', $content);
-        $table_name = $wpdb->prefix . 'fact_checker_cache';
+        $table_name = $wpdb->prefix . 'facty_cache';
         
         $wpdb->replace(
             $table_name,
@@ -775,30 +775,30 @@ Focus on factual accuracy and provide real sources from your web search results.
     
     public function add_admin_menu() {
         add_options_page(
-            'Fact Checker Settings',
+            'Facty Settings',
             'Fact Checker',
             'manage_options',
-            'fact-checker',
+            'facty',
             array($this, 'options_page')
         );
         
         add_management_page(
-            'Fact Checker Users',
-            'Fact Checker Users',
+            'Facty Users',
+            'Facty Users',
             'manage_options',
-            'fact-checker-users',
+            'facty-users',
             array($this, 'users_page')
         );
     }
     
     public function settings_init() {
-        register_setting('fact_checker', 'fact_checker_options');
+        register_setting('facty', 'facty_options');
         
         add_settings_section(
             'fact_checker_section',
-            'Fact Checker Settings',
+            'Facty Settings',
             array($this, 'settings_section_callback'),
-            'fact_checker'
+            'facty'
         );
         
         $fields = array(
@@ -823,7 +823,7 @@ Focus on factual accuracy and provide real sources from your web search results.
                 $field,
                 $title,
                 array($this, $field . '_render'),
-                'fact_checker',
+                'facty',
                 'fact_checker_section'
             );
         }
@@ -835,42 +835,42 @@ Focus on factual accuracy and provide real sources from your web search results.
     
     public function enabled_render() {
         ?>
-        <input type='checkbox' name='fact_checker_options[enabled]' <?php checked($this->options['enabled'], 1); ?> value='1'>
+        <input type='checkbox' name='facty_options[enabled]' <?php checked($this->options['enabled'], 1); ?> value='1'>
         <p class="description">Enable fact checker globally on all single posts</p>
         <?php
     }
     
     public function require_email_render() {
         ?>
-        <input type='checkbox' name='fact_checker_options[require_email]' <?php checked($this->options['require_email'], 1); ?> value='1'>
+        <input type='checkbox' name='facty_options[require_email]' <?php checked($this->options['require_email'], 1); ?> value='1'>
         <p class="description">Require visitors to enter email before accessing fact checker</p>
         <?php
     }
     
     public function free_limit_render() {
         ?>
-        <input type='number' name='fact_checker_options[free_limit]' value='<?php echo esc_attr($this->options['free_limit']); ?>' min="1" max="50" style="width: 80px;">
+        <input type='number' name='facty_options[free_limit]' value='<?php echo esc_attr($this->options['free_limit']); ?>' min="1" max="50" style="width: 80px;">
         <p class="description">Number of free fact checks for visitors before requiring signup</p>
         <?php
     }
     
     public function terms_url_render() {
         ?>
-        <input type='url' name='fact_checker_options[terms_url]' value='<?php echo esc_attr($this->options['terms_url']); ?>' style="width: 400px;" placeholder="https://yoursite.com/terms">
+        <input type='url' name='facty_options[terms_url]' value='<?php echo esc_attr($this->options['terms_url']); ?>' style="width: 400px;" placeholder="https://yoursite.com/terms">
         <p class="description">URL to your Terms of Use page</p>
         <?php
     }
     
     public function privacy_url_render() {
         ?>
-        <input type='url' name='fact_checker_options[privacy_url]' value='<?php echo esc_attr($this->options['privacy_url']); ?>' style="width: 400px;" placeholder="https://yoursite.com/privacy">
+        <input type='url' name='facty_options[privacy_url]' value='<?php echo esc_attr($this->options['privacy_url']); ?>' style="width: 400px;" placeholder="https://yoursite.com/privacy">
         <p class="description">URL to your Privacy Policy page</p>
         <?php
     }
     
     public function api_key_render() {
         ?>
-        <input type='password' name='fact_checker_options[api_key]' value='<?php echo esc_attr($this->options['api_key']); ?>' style="width: 400px;">
+        <input type='password' name='facty_options[api_key]' value='<?php echo esc_attr($this->options['api_key']); ?>' style="width: 400px;">
         <button type="button" id="test-api-connection" class="button">Test Connection</button>
         <p class="description">Your OpenRouter API key with web search access. Get one at <a href="https://openrouter.ai" target="_blank">openrouter.ai</a></p>
         <div id="api-test-result"></div>
@@ -887,7 +887,7 @@ Focus on factual accuracy and provide real sources from your web search results.
             'google/gemini-pro' => 'Gemini Pro'
         );
         ?>
-        <select name='fact_checker_options[model]'>
+        <select name='facty_options[model]'>
             <?php foreach ($models as $value => $label): ?>
                 <option value='<?php echo $value; ?>' <?php selected($this->options['model'], $value); ?>><?php echo $label; ?></option>
             <?php endforeach; ?>
@@ -899,7 +899,7 @@ Focus on factual accuracy and provide real sources from your web search results.
     public function web_searches_render() {
         $searches = array(3, 5, 7, 10);
         ?>
-        <select name='fact_checker_options[web_searches]'>
+        <select name='facty_options[web_searches]'>
             <?php foreach ($searches as $num): ?>
                 <option value='<?php echo $num; ?>' <?php selected($this->options['web_searches'], $num); ?>><?php echo $num; ?> searches</option>
             <?php endforeach; ?>
@@ -915,7 +915,7 @@ Focus on factual accuracy and provide real sources from your web search results.
             'high' => 'High - Detailed research'
         );
         ?>
-        <select name='fact_checker_options[search_context]'>
+        <select name='facty_options[search_context]'>
             <?php foreach ($contexts as $value => $label): ?>
                 <option value='<?php echo $value; ?>' <?php selected($this->options['search_context'], $value); ?>><?php echo $label; ?></option>
             <?php endforeach; ?>
@@ -930,7 +930,7 @@ Focus on factual accuracy and provide real sources from your web search results.
             'dark' => 'Dark Mode'
         );
         ?>
-        <select name='fact_checker_options[theme_mode]'>
+        <select name='facty_options[theme_mode]'>
             <?php foreach ($modes as $value => $label): ?>
                 <option value='<?php echo $value; ?>' <?php selected($this->options['theme_mode'], $value); ?>><?php echo $label; ?></option>
             <?php endforeach; ?>
@@ -941,35 +941,35 @@ Focus on factual accuracy and provide real sources from your web search results.
     
     public function primary_color_render() {
         ?>
-        <input type='color' name='fact_checker_options[primary_color]' value='<?php echo esc_attr($this->options['primary_color']); ?>'>
+        <input type='color' name='facty_options[primary_color]' value='<?php echo esc_attr($this->options['primary_color']); ?>'>
         <p class="description">Primary color for buttons and icons</p>
         <?php
     }
     
     public function success_color_render() {
         ?>
-        <input type='color' name='fact_checker_options[success_color]' value='<?php echo esc_attr($this->options['success_color']); ?>'>
+        <input type='color' name='facty_options[success_color]' value='<?php echo esc_attr($this->options['success_color']); ?>'>
         <p class="description">Color for success indicators and high scores</p>
         <?php
     }
     
     public function warning_color_render() {
         ?>
-        <input type='color' name='fact_checker_options[warning_color]' value='<?php echo esc_attr($this->options['warning_color']); ?>'>
+        <input type='color' name='facty_options[warning_color]' value='<?php echo esc_attr($this->options['warning_color']); ?>'>
         <p class="description">Color for warnings and issues</p>
         <?php
     }
     
     public function background_color_render() {
         ?>
-        <input type='color' name='fact_checker_options[background_color]' value='<?php echo esc_attr($this->options['background_color']); ?>'>
+        <input type='color' name='facty_options[background_color]' value='<?php echo esc_attr($this->options['background_color']); ?>'>
         <p class="description">Background color for the fact checker box</p>
         <?php
     }
     
     public function users_page() {
         global $wpdb;
-        $table_name = $wpdb->prefix . 'fact_checker_users';
+        $table_name = $wpdb->prefix . 'facty_users';
         
         $users = $wpdb->get_results("SELECT * FROM $table_name ORDER BY created_at DESC LIMIT 500");
         $total_users = $wpdb->get_var("SELECT COUNT(*) FROM $table_name");
@@ -977,7 +977,7 @@ Focus on factual accuracy and provide real sources from your web search results.
         
         ?>
         <div class="wrap">
-            <h1>Fact Checker Users</h1>
+            <h1>Facty Users</h1>
             
             <div class="stats-boxes" style="display: flex; gap: 20px; margin: 20px 0;">
                 <div style="background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
@@ -1031,11 +1031,11 @@ Focus on factual accuracy and provide real sources from your web search results.
     public function options_page() {
         ?>
         <div class="wrap">
-            <h1>Fact Checker Settings</h1>
+            <h1>Facty Settings</h1>
             <form action='options.php' method='post'>
                 <?php
-                settings_fields('fact_checker');
-                do_settings_sections('fact_checker');
+                settings_fields('facty');
+                do_settings_sections('facty');
                 submit_button();
                 ?>
             </form>
@@ -1050,7 +1050,7 @@ Focus on factual accuracy and provide real sources from your web search results.
                     <li><strong>Email Storage:</strong> Stored securely in your WordPress database</li>
                     <li><strong>Privacy:</strong> Make sure your Terms and Privacy links are configured</li>
                 </ul>
-                <p><a href="<?php echo admin_url('tools.php?page=fact-checker-users'); ?>" class="button">View User List →</a></p>
+                <p><a href="<?php echo admin_url('tools.php?page=facty-users'); ?>" class="button">View User List →</a></p>
             </div>
         </div>
         
@@ -1058,8 +1058,8 @@ Focus on factual accuracy and provide real sources from your web search results.
         jQuery(document).ready(function($) {
             $('#test-api-connection').on('click', function() {
                 var button = $(this);
-                var apiKey = $('input[name="fact_checker_options[api_key]"]').val();
-                var model = $('select[name="fact_checker_options[model]"]').val();
+                var apiKey = $('input[name="facty_options[api_key]"]').val();
+                var model = $('select[name="facty_options[model]"]').val();
                 var resultDiv = $('#api-test-result');
                 
                 if (!apiKey) {
@@ -1074,7 +1074,7 @@ Focus on factual accuracy and provide real sources from your web search results.
                     url: ajaxurl,
                     type: 'POST',
                     data: {
-                        action: 'test_fact_checker_api',
+                        action: 'test_facty_api',
                         api_key: apiKey,
                         model: model,
                         nonce: '<?php echo wp_create_nonce('test_api_nonce'); ?>'
@@ -1140,4 +1140,4 @@ Focus on factual accuracy and provide real sources from your web search results.
 }
 
 // Initialize the plugin
-new FactChecker();
+new Facty();
