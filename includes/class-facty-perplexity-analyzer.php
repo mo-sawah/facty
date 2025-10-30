@@ -29,7 +29,7 @@ class Facty_Perplexity_Analyzer {
         }
         
         if ($task_id) {
-            $this->update_progress($task_id, 15, 'analyzing', 'Starting Perplexity analysis with real-time web search...');
+            $this->update_progress($task_id, 15, 'analyzing', 'Starting analysis with real-time deep search...');
         }
         
         $current_date = current_time('F j, Y');

@@ -16,12 +16,40 @@ $options = get_option('facty_options', array());
 
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html <?php language_attributes(); ?>>
 <head>
-    <meta charset="UTF-8">
+    <meta charset="<?php bloginfo('charset'); ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fact-Check Editor | Facty</title>
-    <?php wp_head(); ?>
+    <?php 
+    // Enqueue jQuery only
+    wp_enqueue_script('jquery');
+    wp_head(); 
+    ?>
+    
+    <script type="text/javascript">
+    // Define factChecker for editor page
+    var factChecker = <?php 
+        $facty_options = get_option('facty_options', array());
+        echo json_encode(array(
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('facty_nonce'),
+            'theme_mode' => isset($facty_options['theme_mode']) ? $facty_options['theme_mode'] : 'light',
+            'require_email' => isset($facty_options['require_email']) ? $facty_options['require_email'] : true,
+            'free_limit' => isset($facty_options['free_limit']) ? $facty_options['free_limit'] : 5,
+            'terms_url' => isset($facty_options['terms_url']) ? $facty_options['terms_url'] : '',
+            'privacy_url' => isset($facty_options['privacy_url']) ? $facty_options['privacy_url'] : '',
+            'fact_check_mode' => isset($facty_options['fact_check_mode']) ? $facty_options['fact_check_mode'] : 'openrouter',
+            'colors' => array(
+                'primary' => isset($facty_options['primary_color']) ? $facty_options['primary_color'] : '#3b82f6',
+                'success' => isset($facty_options['success_color']) ? $facty_options['success_color'] : '#059669',
+                'warning' => isset($facty_options['warning_color']) ? $facty_options['warning_color'] : '#f59e0b',
+                'background' => isset($facty_options['background_color']) ? $facty_options['background_color'] : '#f8fafc'
+            )
+        ));
+    ?>;
+    </script>
+    
     <style>
         * {
             margin: 0;
