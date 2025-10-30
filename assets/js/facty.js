@@ -734,24 +734,27 @@ jQuery(document).ready(function ($) {
       html += "</div>";
     }
 
-    // Metadata footer
+    // CTA Buttons
+    var currentArticleUrl = window.location.href;
+    var detailedAnalysisUrl =
+      "https://news.disinformationcommission/search/?prefill_url=" +
+      encodeURIComponent(currentArticleUrl);
+
     html += '<div class="fact-check-cta-buttons">';
     html +=
-      '<button class="cta-button cta-secondary" onclick="downloadReport()">📥 Download Report</button>';
+      '<a href="' +
+      detailedAnalysisUrl +
+      '" class="cta-button cta-primary" target="_blank">Get Detailed Analysis</a>';
     html +=
-      '<button class="cta-button cta-secondary" onclick="shareResults()">📤 Share Results</button>';
+      '<a href="https://webmon.disinformationcommission.com/" class="cta-button cta-secondary" target="_blank">Web Monitor</a>';
+    html +=
+      '<a href="https://disinformationcommission.com/tools" class="cta-button cta-secondary" target="_blank">More Tools</a>';
     html += "</div>";
 
     html += '<div class="voicing-info">';
     html += '<small style="color: #94a3b8;">Analyzed: ' + timeString;
     if (data.mode) {
-      var modeLabel =
-        data.mode === "firecrawl"
-          ? "Deep Research Mode"
-          : data.mode === "jina"
-          ? "Ultra-Fast Mode"
-          : "Quick Check Mode";
-      html += " • " + modeLabel;
+      html += " • Deep Research Mode";
     }
     html += "</small>";
     html += "</div>";
