@@ -144,11 +144,11 @@ class Facty_Core {
         
         $mode_label = 'OpenRouter Web Search';
         if ($this->options['fact_check_mode'] === 'perplexity') {
-            $mode_label = 'Perplexity Sonar';
+            $mode_label = 'Deep Research';
         } elseif ($this->options['fact_check_mode'] === 'firecrawl') {
-            $mode_label = 'Firecrawl Deep Research';
+            $mode_label = 'Crawler Deep Research';
         } elseif ($this->options['fact_check_mode'] === 'jina') {
-            $mode_label = 'Jina DeepSearch';
+            $mode_label = 'Reader DeepSearch';
         }
         
         ob_start();
@@ -295,12 +295,21 @@ class Facty_Core {
      * Register demo page
      */
     public function register_demo_page() {
+        // Demo page
         add_rewrite_rule(
             '^fact-check-demo/?$',
             'index.php?facty_demo=1',
             'top'
         );
         add_rewrite_tag('%facty_demo%', '1');
+        
+        // Editor page
+        add_rewrite_rule(
+            '^fact-check-editor/?$',
+            'index.php?facty_editor=1',
+            'top'
+        );
+        add_rewrite_tag('%facty_editor%', '1');
     }
     
     /**
@@ -309,6 +318,11 @@ class Facty_Core {
     public function handle_demo_page() {
         if (get_query_var('facty_demo') == '1') {
             include FACTY_PLUGIN_PATH . 'templates/demo-page.php';
+            exit;
+        }
+        
+        if (get_query_var('facty_editor') == '1') {
+            include FACTY_PLUGIN_PATH . 'templates/editor-page.php';
             exit;
         }
     }

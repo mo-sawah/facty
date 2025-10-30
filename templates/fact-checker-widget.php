@@ -246,8 +246,11 @@ if (!defined('ABSPATH')) {
         </div>
 
         <!-- Mode Info -->
-        <div class="fact-check-mode-info" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">
+        <div class="fact-check-mode-info" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280; display: flex; justify-content: space-between; align-items: center;">
             <span>Mode: <strong><?php echo esc_html($mode_label); ?></strong></span>
+            <a href="https://disinformationcommission.com/" target="_blank" rel="noopener" style="color: #6b7280; text-decoration: none; transition: color 0.2s;" onmouseover="this.style.color='#3b82f6'" onmouseout="this.style.color='#6b7280'">
+                Powered by <strong>The Disinformation Commission</strong>
+            </a>
         </div>
     </div>
 </div>

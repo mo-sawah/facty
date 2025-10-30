@@ -30,6 +30,10 @@ class Facty_AJAX {
         
         add_action('wp_ajax_test_facty_api', array($this, 'test_api'));
         
+        // Custom text fact-checking for editor
+        add_action('wp_ajax_facty_check_custom_text', array($this, 'check_custom_text'));
+        add_action('wp_ajax_nopriv_facty_check_custom_text', array($this, 'check_custom_text'));
+        
         // Register background processing hook
         add_action('facty_process_background', array($this, 'process_background_task'));
     }
@@ -116,13 +120,17 @@ class Facty_AJAX {
             return;
         }
         
-        error_log('Facty: Processing fact check for post ' . $data['post_id']);
-        
         // Delete the transient
         delete_transient('facty_bg_' . $task_id);
         
-        // Process the fact check
-        $this->process_fact_check_background($task_id, $data['post_id'], $data['options'], $data['user_status']);
+        // Check if this is custom text or post ID
+        if (isset($data['custom_text'])) {
+            error_log('Facty: Processing custom text fact check');
+            $this->process_custom_text_background($task_id, $data['custom_text'], $data['options']);
+        } else {
+            error_log('Facty: Processing fact check for post ' . $data['post_id']);
+            $this->process_fact_check_background($task_id, $data['post_id'], $data['options'], $data['user_status']);
+        }
         
         error_log('Facty: Background task completed - ' . $task_id);
     }
@@ -202,6 +210,61 @@ class Facty_AJAX {
             
         } catch (Exception $e) {
             error_log('Facty Error: ' . $e->getMessage());
+            error_log('Facty Error Trace: ' . $e->getTraceAsString());
+            
+            set_transient($task_id, array(
+                'status' => 'error',
+                'progress' => 0,
+                'message' => $e->getMessage(),
+                'error_details' => $e->getTraceAsString()
+            ), 600);
+        }
+    }
+    
+    /**
+     * Process custom text background fact-check
+     */
+    private function process_custom_text_background($task_id, $custom_text, $options = null) {
+        $options = $options ? $options : $this->options;
+        
+        try {
+            $this->update_progress($task_id, 10, 'analyzing', 'Reading text...');
+            
+            // Trim and validate text
+            $content = trim($custom_text);
+            
+            if (empty($content) || strlen($content) < 50) {
+                throw new Exception('Text too short to analyze');
+            }
+            
+            // Analyze content based on mode
+            $mode = $options['fact_check_mode'];
+            
+            if ($mode === 'perplexity' && !empty($options['perplexity_api_key'])) {
+                require_once FACTY_PLUGIN_PATH . 'includes/class-facty-perplexity-analyzer.php';
+                $analyzer = new Facty_Perplexity_Analyzer($options);
+                $result = $analyzer->analyze($content, $task_id);
+            } elseif ($mode === 'jina' && !empty($options['jina_api_key'])) {
+                require_once FACTY_PLUGIN_PATH . 'includes/class-facty-jina-analyzer.php';
+                $analyzer = new Facty_Jina_Analyzer($options);
+                $result = $analyzer->analyze($content, $task_id);
+            } elseif ($mode === 'firecrawl' && !empty($options['firecrawl_api_key'])) {
+                $analyzer = new Facty_Firecrawl($options);
+                $result = $analyzer->analyze($content, $task_id);
+            } else {
+                $analyzer = new Facty_Analyzer($options);
+                $result = $analyzer->analyze($content, $task_id);
+            }
+            
+            $this->update_progress($task_id, 100, 'complete', 'Fact check complete!');
+            set_transient($task_id, array(
+                'status' => 'complete',
+                'progress' => 100,
+                'result' => $result
+            ), 600);
+            
+        } catch (Exception $e) {
+            error_log('Facty Custom Text Error: ' . $e->getMessage());
             error_log('Facty Error Trace: ' . $e->getTraceAsString());
             
             set_transient($task_id, array(
@@ -360,6 +423,59 @@ class Facty_AJAX {
         } catch (Exception $e) {
             wp_send_json_error('Test failed: ' . $e->getMessage());
         }
+    }
+    
+    /**
+     * Check custom text (for editor page)
+     */
+    public function check_custom_text() {
+        check_ajax_referer('facty_nonce', 'nonce');
+        
+        $text = isset($_POST['text']) ? sanitize_textarea_field($_POST['text']) : '';
+        
+        if (empty($text) || strlen($text) < 50) {
+            wp_send_json_error('Text must be at least 50 characters long');
+            return;
+        }
+        
+        // Check if API key is configured
+        if (empty($this->options['api_key'])) {
+            wp_send_json_error('API key not configured. Please check plugin settings.');
+            return;
+        }
+        
+        // Create task ID for background processing
+        $task_id = 'facty_custom_' . time() . '_' . wp_rand(1000, 9999);
+        
+        // Set initial progress
+        set_transient($task_id, array(
+            'status' => 'processing',
+            'progress' => 5,
+            'stage' => 'starting',
+            'message' => 'Starting fact check...'
+        ), 600);
+        
+        // Store data for background processing
+        set_transient('facty_bg_' . $task_id, array(
+            'custom_text' => $text,
+            'options' => $this->options
+        ), 600);
+        
+        // Schedule background processing
+        wp_schedule_single_event(time(), 'facty_process_background', array($task_id));
+        
+        // Force spawn cron
+        if (function_exists('spawn_cron')) {
+            spawn_cron();
+        }
+        
+        error_log('Facty: Custom text task scheduled - ' . $task_id);
+        
+        // Return task ID immediately to frontend
+        wp_send_json_success(array(
+            'task_id' => $task_id,
+            'message' => 'Fact check started'
+        ));
     }
     
     /**
