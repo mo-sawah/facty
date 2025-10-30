@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Facty
  * Description: AI-powered fact-checking plugin that verifies article accuracy using OpenRouter with web search or Firecrawl for deep multi-step research
- * Version: 4.1.1
+ * Version: 4.1.2
  * Author: Mohamed Sawah
  * Author URI: https://sawahsolutions.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('FACTY_VERSION', '4.1.1');
+define('FACTY_VERSION', '4.1.2');
 define('FACTY_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('FACTY_PLUGIN_PATH', plugin_dir_path(__FILE__));
 
@@ -29,12 +29,8 @@ class Facty {
         add_action('admin_init', array($this, 'settings_init'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
         add_action('admin_enqueue_scripts', array($this, 'admin_enqueue_scripts'));
-        
-        // AJAX endpoints
         add_action('wp_ajax_facty_check_article', array($this, 'ajax_fact_check'));
         add_action('wp_ajax_nopriv_facty_check_article', array($this, 'ajax_fact_check'));
-        add_action('wp_ajax_facty_check_progress', array($this, 'ajax_check_progress'));
-        add_action('wp_ajax_nopriv_facty_check_progress', array($this, 'ajax_check_progress'));
         add_action('wp_ajax_test_facty_api', array($this, 'ajax_test_api'));
         add_action('wp_ajax_facty_email_submit', array($this, 'ajax_email_submit'));
         add_action('wp_ajax_nopriv_facty_email_submit', array($this, 'ajax_email_submit'));
@@ -53,7 +49,6 @@ class Facty {
             'api_key' => '',
             'model' => 'openai/gpt-4',
             'description_text' => 'Verify the accuracy of this article using AI analysis and real-time sources.',
-            'plugin_title' => 'Facty',
             'web_searches' => 5,
             'search_context' => 'medium',
             'theme_mode' => 'light',
@@ -65,7 +60,7 @@ class Facty {
             'terms_url' => '',
             'privacy_url' => '',
             'require_email' => true,
-            // Firecrawl options
+            // New Firecrawl options
             'fact_check_mode' => 'openrouter',
             'firecrawl_api_key' => '',
             'firecrawl_searches_per_claim' => 3,
@@ -144,7 +139,6 @@ class Facty {
                 'terms_url' => $this->options['terms_url'],
                 'privacy_url' => $this->options['privacy_url'],
                 'fact_check_mode' => $this->options['fact_check_mode'],
-                'plugin_title' => isset($this->options['plugin_title']) ? $this->options['plugin_title'] : 'Facty',
                 'colors' => array(
                     'primary' => isset($this->options['primary_color']) ? $this->options['primary_color'] : '#3b82f6',
                     'success' => isset($this->options['success_color']) ? $this->options['success_color'] : '#059669',
@@ -178,7 +172,8 @@ class Facty {
         );
         
         $user_status = $this->get_user_status();
-        $plugin_title = isset($this->options['plugin_title']) ? $this->options['plugin_title'] : 'Facty';
+        
+        $mode_label = $this->options['fact_check_mode'] === 'firecrawl' ? 'Firecrawl Deep Research' : 'OpenRouter Web Search';
         
         ob_start();
         ?>
@@ -187,430 +182,421 @@ class Facty {
                 <div class="fact-check-header">
                     <div class="fact-check-title">
                         <div class="fact-check-icon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M9 11l3 3L22 4"></path>
-                                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M9 12l2 2 4-4"></path>
+                                <circle cx="12" cy="12" r="9"></circle>
                             </svg>
                         </div>
-                        <h3><?php echo esc_html($plugin_title); ?></h3>
+                        <h3>Facty <span style="font-size: 0.65em; opacity: 0.7;">(<?php echo esc_html($mode_label); ?>)</span></h3>
                     </div>
-                    <button class="check-button" onclick="checkUserAccessAndProceed(jQuery(this).closest('.fact-check-container'))" aria-label="Check facts">
+                    <button class="check-button">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                         </svg>
                         <span>Check Facts</span>
                     </button>
                 </div>
-                
                 <p class="fact-check-description"><?php echo esc_html($this->options['description_text']); ?></p>
                 
-                <!-- Progress Container (initially hidden) -->
-                <div id="fact-check-progress" class="fact-check-progress" style="display: none;">
-                    <div class="progress-header">
-                        <div class="progress-title">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="progress-icon">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <path d="M12 6v6l4 2"></path>
-                            </svg>
-                            <span class="progress-title-text">Analyzing...</span>
-                        </div>
-                        <span class="progress-percentage">0%</span>
+                <!-- Email Capture Form -->
+                <div class="email-capture-form" id="email-capture-form" style="display: none;">
+                    <div class="form-header">
+                        <h4>Get Your Fact Check Report</h4>
+                        <p>Enter your email to receive detailed fact-checking analysis</p>
                     </div>
-                    
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: 0%"></div>
-                    </div>
-                    
-                    <div class="progress-steps">
-                        <div class="progress-step" data-step="extracting">
-                            <div class="step-icon">1</div>
-                            <div class="step-content">
-                                <div class="step-label">Extracting Claims</div>
-                                <div class="step-status">Waiting...</div>
-                            </div>
+                    <form class="email-form">
+                        <div class="input-group">
+                            <input type="email" id="visitor-email" placeholder="Enter your email address" required>
+                            <button type="submit" class="submit-btn">
+                                <span>Get Report</span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M22 2L11 13"></path>
+                                    <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+                                </svg>
+                            </button>
                         </div>
-                        <div class="progress-step" data-step="verifying">
-                            <div class="step-icon">2</div>
-                            <div class="step-content">
-                                <div class="step-label">Verifying with Sources</div>
-                                <div class="step-status">Waiting...</div>
-                            </div>
-                        </div>
-                        <div class="progress-step" data-step="generating">
-                            <div class="step-icon">3</div>
-                            <div class="step-content">
-                                <div class="step-label">Generating Report</div>
-                                <div class="step-status">Waiting...</div>
-                            </div>
-                        </div>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="accept-terms" required>
+                            <span class="checkmark"></span>
+                            <span class="terms-text">I agree to the <a href="<?php echo esc_url($this->options['terms_url']); ?>" target="_blank">Terms of Use</a> and <a href="<?php echo esc_url($this->options['privacy_url']); ?>" target="_blank">Privacy Policy</a></span>
+                        </label>
+                    </form>
+                    <div class="form-footer">
+                        <small><?php echo ($this->options['free_limit'] - $user_status['usage_count']); ?> free reports remaining</small>
                     </div>
                 </div>
-                
-                <!-- Email Capture Form -->
-                <?php echo $this->get_email_form_html(); ?>
                 
                 <!-- Signup Form -->
-                <?php echo $this->get_signup_form_html(); ?>
+                <div class="signup-form" id="signup-form" style="display: none;">
+                    <div class="form-header">
+                        <h4>Continue with Full Access</h4>
+                        <p>You've used your <?php echo $this->options['free_limit']; ?> free reports. Sign up for unlimited access!</p>
+                    </div>
+                    <form class="signup-form-inner">
+                        <div class="input-row">
+                            <input type="text" id="signup-name" placeholder="Full Name" required>
+                            <input type="email" id="signup-email" placeholder="Email Address" required>
+                        </div>
+                        <input type="password" id="signup-password" placeholder="Create Password" required>
+                        <button type="submit" class="submit-btn signup-btn">
+                            <span>Create Account & Continue</span>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 2L11 13"></path>
+                                <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+                            </svg>
+                        </button>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="signup-terms" required>
+                            <span class="checkmark"></span>
+                            <span class="terms-text">I agree to the <a href="<?php echo esc_url($this->options['terms_url']); ?>" target="_blank">Terms of Use</a> and <a href="<?php echo esc_url($this->options['privacy_url']); ?>" target="_blank">Privacy Policy</a></span>
+                        </label>
+                    </form>
+                    <div class="login-link">
+                        <p>Already have an account? <a href="<?php echo wp_login_url(get_permalink()); ?>">Sign in here</a></p>
+                    </div>
+                </div>
                 
-                <!-- Results Container -->
-                <div id="fact-check-results" class="results-container" style="display: none;"></div>
+                <div class="results-container" id="fact-check-results" style="display: none;">
+                    <!-- Results will be loaded here via AJAX -->
+                </div>
             </div>
         </div>
-        <?php
-        return ob_get_clean();
-    }
-    
-    // ... [rest of the methods remain the same - email form, signup form, etc.] ...
-    
-    private function get_email_form_html() {
-        $terms_url = $this->options['terms_url'];
-        $privacy_url = $this->options['privacy_url'];
         
-        ob_start();
-        ?>
-        <div id="email-capture-form" class="email-capture-form" style="display: none;">
-            <form class="email-form" method="post">
-                <div class="form-header">
-                    <h4>📧 Get Your Fact Check Report</h4>
-                    <p>Enter your email to receive detailed analysis results</p>
-                </div>
-                
-                <div class="input-group">
-                    <input type="email" id="visitor-email" name="email" placeholder="your.email@example.com" required>
-                    <button type="submit" class="submit-btn">
-                        <span>Get Report</span>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M22 2L11 13"></path>
-                            <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
-                        </svg>
-                    </button>
-                </div>
-                
-                <label class="checkbox-label">
-                    <input type="checkbox" id="accept-terms" required>
-                    <span class="checkmark"></span>
-                    <span class="terms-text">
-                        I agree to the <a href="<?php echo esc_url($terms_url); ?>" target="_blank">Terms</a> and 
-                        <a href="<?php echo esc_url($privacy_url); ?>" target="_blank">Privacy Policy</a>
-                    </span>
-                </label>
-                
-                <div class="form-footer">
-                    <small>✨ Free • <?php echo $this->options['free_limit']; ?> fact checks included</small>
-                </div>
-            </form>
-        </div>
+        <style>
+            :root {
+                --fc-primary: <?php echo $colors['primary']; ?>;
+                --fc-success: <?php echo $colors['success']; ?>;
+                --fc-warning: <?php echo $colors['warning']; ?>;
+                --fc-background: <?php echo $colors['background']; ?>;
+            }
+        </style>
         <?php
         return ob_get_clean();
     }
     
-    private function get_signup_form_html() {
-        $terms_url = $this->options['terms_url'];
-        $privacy_url = $this->options['privacy_url'];
+    private function get_user_status() {
+        if (is_user_logged_in()) {
+            return array(
+                'logged_in' => true,
+                'usage_count' => 0,
+                'can_use' => true,
+                'email' => wp_get_current_user()->user_email
+            );
+        }
         
-        ob_start();
-        ?>
-        <div id="signup-form" class="signup-form" style="display: none;">
-            <form class="signup-form-inner" method="post">
-                <div class="form-header">
-                    <h4>🚀 Unlimited Fact Checks</h4>
-                    <p>Create an account for unlimited access to fact checking</p>
-                </div>
-                
-                <div class="input-row">
-                    <input type="text" id="signup-name" name="name" placeholder="Full Name" required>
-                    <input type="email" id="signup-email" name="email" placeholder="Email Address" required>
-                </div>
-                <input type="password" id="signup-password" name="password" placeholder="Password (min. 6 characters)" required>
-                
-                <label class="checkbox-label">
-                    <input type="checkbox" id="signup-terms" required>
-                    <span class="checkmark"></span>
-                    <span class="terms-text">
-                        I agree to the <a href="<?php echo esc_url($terms_url); ?>" target="_blank">Terms</a> and 
-                        <a href="<?php echo esc_url($privacy_url); ?>" target="_blank">Privacy Policy</a>
-                    </span>
-                </label>
-                
-                <button type="submit" class="signup-btn">
-                    <span>Create Account & Continue</span>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 2L11 13"></path>
-                        <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
-                    </svg>
-                </button>
-                
-                <div class="login-link">
-                    <p>Already have an account? <a href="<?php echo wp_login_url(get_permalink()); ?>">Log in</a></p>
-                </div>
-            </form>
-        </div>
-        <?php
-        return ob_get_clean();
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'facty_users';
+        $ip_address = $this->get_client_ip();
+        
+        // Check by cookie first (email)
+        $email = isset($_COOKIE['fact_checker_email']) ? sanitize_email($_COOKIE['fact_checker_email']) : '';
+        
+        if ($email) {
+            $user = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM $table_name WHERE email = %s",
+                $email
+            ));
+            
+            if ($user) {
+                return array(
+                    'logged_in' => false,
+                    'email' => $user->email,
+                    'usage_count' => intval($user->usage_count),
+                    'can_use' => $user->is_registered || intval($user->usage_count) < $this->options['free_limit'],
+                    'is_registered' => (bool) $user->is_registered
+                );
+            }
+        }
+        
+        // Check by IP as fallback
+        $user = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $table_name WHERE ip_address = %s ORDER BY created_at DESC LIMIT 1",
+            $ip_address
+        ));
+        
+        if ($user) {
+            return array(
+                'logged_in' => false,
+                'email' => $user->email,
+                'usage_count' => intval($user->usage_count),
+                'can_use' => $user->is_registered || intval($user->usage_count) < $this->options['free_limit'],
+                'is_registered' => (bool) $user->is_registered
+            );
+        }
+        
+        return array(
+            'logged_in' => false,
+            'email' => '',
+            'usage_count' => 0,
+            'can_use' => true,
+            'is_registered' => false
+        );
     }
     
-    /**
-     * AJAX Handler - Start fact check with background processing
-     */
+    private function get_client_ip() {
+        $ipkeys = array('HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR');
+        foreach ($ipkeys as $key) {
+            if (array_key_exists($key, $_SERVER) === true) {
+                foreach (explode(',', $_SERVER[$key]) as $ip) {
+                    $ip = trim($ip);
+                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
+                        return $ip;
+                    }
+                }
+            }
+        }
+        return $_SERVER['REMOTE_ADDR'];
+    }
+    
+    public function ajax_email_submit() {
+        check_ajax_referer('facty_nonce', 'nonce');
+        
+        $email = sanitize_email($_POST['email']);
+        $ip_address = $this->get_client_ip();
+        
+        if (!is_email($email)) {
+            wp_send_json_error('Please enter a valid email address');
+            return;
+        }
+        
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'facty_users';
+        
+        // Check if email already exists
+        $existing = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $table_name WHERE email = %s",
+            $email
+        ));
+        
+        if ($existing) {
+            // Update IP and last used
+            $wpdb->update(
+                $table_name,
+                array(
+                    'ip_address' => $ip_address,
+                    'last_used' => current_time('mysql')
+                ),
+                array('email' => $email),
+                array('%s', '%s'),
+                array('%s')
+            );
+        } else {
+            // Insert new user
+            $wpdb->insert(
+                $table_name,
+                array(
+                    'email' => $email,
+                    'ip_address' => $ip_address,
+                    'usage_count' => 0
+                ),
+                array('%s', '%s', '%d')
+            );
+        }
+        
+        // Set cookie
+        setcookie('fact_checker_email', $email, time() + (86400 * 365), '/');
+        
+        wp_send_json_success(array('email' => $email));
+    }
+    
+    public function ajax_signup() {
+        check_ajax_referer('facty_nonce', 'nonce');
+        
+        $name = sanitize_text_field($_POST['name']);
+        $email = sanitize_email($_POST['email']);
+        $password = $_POST['password'];
+        $ip_address = $this->get_client_ip();
+        
+        if (!is_email($email) || empty($name) || empty($password)) {
+            wp_send_json_error('Please fill in all required fields');
+            return;
+        }
+        
+        // Create WordPress user
+        $user_id = wp_create_user($email, $password, $email);
+        
+        if (is_wp_error($user_id)) {
+            wp_send_json_error($user_id->get_error_message());
+            return;
+        }
+        
+        // Update user meta
+        wp_update_user(array(
+            'ID' => $user_id,
+            'display_name' => $name,
+            'first_name' => $name
+        ));
+        
+        // Update fact checker user record
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'facty_users';
+        
+        $wpdb->replace(
+            $table_name,
+            array(
+                'email' => $email,
+                'ip_address' => $ip_address,
+                'usage_count' => 0,
+                'is_registered' => 1
+            ),
+            array('%s', '%s', '%d', '%d')
+        );
+        
+        // Auto login
+        wp_set_current_user($user_id);
+        wp_set_auth_cookie($user_id, true);
+        
+        wp_send_json_success(array('user_id' => $user_id, 'email' => $email));
+    }
+    
     public function ajax_fact_check() {
         check_ajax_referer('facty_nonce', 'nonce');
         
         $post_id = intval($_POST['post_id']);
+        $post = get_post($post_id);
         
-        if (!$post_id) {
-            wp_send_json_error('Invalid post ID');
-        }
-        
-        // Generate unique task ID for this fact check
-        $task_id = 'facty_task_' . $post_id . '_' . time();
-        
-        // Initialize progress tracking
-        set_transient($task_id, array(
-            'status' => 'starting',
-            'progress' => 0,
-            'step' => 'initializing',
-            'step_detail' => 'Starting fact check...',
-            'started_at' => time()
-        ), 600); // 10 minutes expiry
-        
-        // Start background processing
-        $this->process_fact_check_background($task_id, $post_id);
-        
-        wp_send_json_success(array(
-            'task_id' => $task_id,
-            'message' => 'Fact check started'
-        ));
-    }
-    
-    /**
-     * Background processing function
-     */
-    private function process_fact_check_background($task_id, $post_id) {
-        // This runs asynchronously
-        try {
-            // Update: Extracting claims
-            $this->update_progress($task_id, 10, 'extracting', 'Reading article content...');
-            
-            $post = get_post($post_id);
-            if (!$post) {
-                throw new Exception('Post not found');
-            }
-            
-            $content = wp_strip_all_tags($post->post_content);
-            $content = substr($content, 0, 3000);
-            
-            // Check cache
-            $content_hash = md5($content);
-            $cached_result = $this->get_cached_result($post_id, $content_hash);
-            
-            if ($cached_result) {
-                $this->update_progress($task_id, 100, 'complete', 'Using cached results');
-                set_transient($task_id, array(
-                    'status' => 'complete',
-                    'progress' => 100,
-                    'result' => $cached_result
-                ), 600);
-                return;
-            }
-            
-            // Process based on mode
-            if ($this->options['fact_check_mode'] === 'firecrawl') {
-                $result = $this->fact_check_with_firecrawl($content, $task_id);
-            } else {
-                $result = $this->analyze_content_openrouter($content, $task_id);
-            }
-            
-            // Cache the result
-            $this->cache_result($post_id, $content_hash, $result);
-            
-            // Mark as complete
-            $this->update_progress($task_id, 100, 'complete', 'Fact check complete!');
-            set_transient($task_id, array(
-                'status' => 'complete',
-                'progress' => 100,
-                'result' => $result
-            ), 600);
-            
-        } catch (Exception $e) {
-            set_transient($task_id, array(
-                'status' => 'error',
-                'progress' => 0,
-                'error' => $e->getMessage()
-            ), 600);
-        }
-    }
-    
-    /**
-     * AJAX Handler - Check progress
-     */
-    public function ajax_check_progress() {
-        check_ajax_referer('facty_nonce', 'nonce');
-        
-        $task_id = sanitize_text_field($_POST['task_id']);
-        $progress_data = get_transient($task_id);
-        
-        if (!$progress_data) {
-            wp_send_json_error('Task not found or expired');
+        if (!$post) {
+            wp_send_json_error('Post not found');
             return;
         }
         
-        wp_send_json_success($progress_data);
-    }
-    
-    /**
-     * Update progress helper
-     */
-    private function update_progress($task_id, $progress, $step, $detail) {
-        $data = get_transient($task_id);
-        if ($data) {
-            $data['progress'] = $progress;
-            $data['step'] = $step;
-            $data['step_detail'] = $detail;
-            $data['status'] = 'processing';
-            set_transient($task_id, $data, 600);
+        // Check if API key is configured
+        if (empty($this->options['api_key'])) {
+            wp_send_json_error('API key not configured. Please check plugin settings.');
+            return;
+        }
+        
+        // Check user permissions
+        $user_status = $this->get_user_status();
+        if (!$user_status['can_use']) {
+            wp_send_json_error('Usage limit exceeded. Please sign up for unlimited access.');
+            return;
+        }
+        
+        // Check cache first
+        $cached_result = $this->get_cached_result($post_id, $post->post_content);
+        if ($cached_result) {
+            wp_send_json_success($cached_result);
+            return;
+        }
+        
+        // Get article content
+        $content = strip_tags($post->post_content);
+        $content = wp_trim_words($content, 800);
+        
+        if (empty(trim($content))) {
+            wp_send_json_error('No content to analyze');
+            return;
+        }
+        
+        try {
+            // Route to appropriate analyzer based on mode
+            if ($this->options['fact_check_mode'] === 'firecrawl' && !empty($this->options['firecrawl_api_key'])) {
+                $result = $this->analyze_content_firecrawl($content);
+            } else {
+                $result = $this->analyze_content_openrouter($content);
+            }
+            
+            // Cache the result
+            $this->cache_result($post_id, $post->post_content, $result);
+            
+            // Update usage count
+            $this->update_usage_count($user_status);
+            
+            wp_send_json_success($result);
+        } catch (Exception $e) {
+            error_log('Facty Error: ' . $e->getMessage());
+            wp_send_json_error($e->getMessage());
         }
     }
     
-    /**
-     * Firecrawl fact checking with progress updates
-     */
-    private function fact_check_with_firecrawl($content, $task_id) {
+    private function update_usage_count($user_status) {
+        if ($user_status['logged_in'] || $user_status['is_registered']) {
+            return; // No limits for registered users
+        }
+        
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'facty_users';
+        
+        if (!empty($user_status['email'])) {
+            $wpdb->query($wpdb->prepare(
+                "UPDATE $table_name SET usage_count = usage_count + 1, last_used = %s WHERE email = %s",
+                current_time('mysql'),
+                $user_status['email']
+            ));
+        }
+    }
+    
+    private function analyze_content_firecrawl($content) {
         $api_key = $this->options['firecrawl_api_key'];
+        $current_date = current_time('F j, Y');
+        $website_name = get_bloginfo('name');
         
-        if (empty($api_key)) {
-            throw new Exception('Firecrawl API key not configured');
-        }
-        
-        // Step 1: Extract claims (15%)
-        $this->update_progress($task_id, 15, 'extracting', 'Analyzing article and extracting claims...');
-        $claims = $this->extract_claims($content);
+        // Step 1: Extract claims from content using AI
+        $claims = $this->extract_claims_with_ai($content);
         
         if (empty($claims)) {
-            $this->update_progress($task_id, 30, 'extracting', 'No factual claims found - content may be opinion or satire');
-            return array(
-                'score' => 100,
-                'status' => 'No Verification Needed',
-                'description' => 'This content appears to be opinion, satire, or contains no verifiable factual claims.',
-                'issues' => array(),
-                'sources' => array(),
-                'mode' => 'firecrawl'
-            );
+            throw new Exception('Failed to extract claims from content');
         }
         
-        $max_claims = intval($this->options['firecrawl_max_claims']);
-        $claims_to_verify = array_slice($claims, 0, $max_claims);
-        $total_claims = count($claims_to_verify);
-        
-        // Step 2: Verify claims (30-80%)
-        $this->update_progress($task_id, 30, 'verifying', "Found {$total_claims} claims to verify...");
-        
+        // Step 2: Multi-step verification using Firecrawl
         $verification_results = array();
         $all_sources = array();
         
-        foreach ($claims_to_verify as $index => $claim) {
-            $claim_num = $index + 1;
-            $progress = 30 + (($index / $total_claims) * 50); // 30% to 80%
+        foreach ($claims as $claim) {
+            $claim_result = $this->verify_claim_with_firecrawl($claim, $api_key);
+            $verification_results[] = $claim_result;
             
-            $this->update_progress($task_id, $progress, 'verifying', "Verifying claim {$claim_num} of {$total_claims}: " . substr($claim['claim'], 0, 50) . "...");
-            
-            $result = $this->verify_claim_with_firecrawl($claim, $api_key);
-            $verification_results[] = $result;
-            
-            if (isset($result['sources'])) {
-                $all_sources = array_merge($all_sources, $result['sources']);
+            if (!empty($claim_result['sources'])) {
+                $all_sources = array_merge($all_sources, $claim_result['sources']);
             }
         }
         
-        // Step 3: Generate final report (80-95%)
-        $this->update_progress($task_id, 85, 'generating', 'Analyzing verification results...');
-        $final_report = $this->generate_final_report($content, $verification_results, $all_sources);
+        // Step 3: Generate final report using AI
+        $final_result = $this->generate_final_report($content, $verification_results, $all_sources);
         
-        $this->update_progress($task_id, 95, 'generating', 'Finalizing report...');
-        
-        return $final_report;
+        return $final_result;
     }
     
-    /**
-     * OpenRouter fact checking with progress updates
-     */
-    private function analyze_content_openrouter($content, $task_id = null) {
+    private function extract_claims_with_ai($content) {
         $api_key = $this->options['api_key'];
         $model = $this->options['model'];
+        $max_claims = intval($this->options['firecrawl_max_claims']);
         
-        if ($task_id) {
-            $this->update_progress($task_id, 20, 'extracting', 'Analyzing article with AI...');
+        // MODIFIED: Updated prompt to allow opinions to be fact-checked
+        $prompt = "Analyze this article and extract the top {$max_claims} most important FACTUAL claims that can be verified. 
+
+IMPORTANT: Extract claims from ALL types of articles including news, analysis, and OPINION pieces. Only skip pure satire/parody.
+        
+Do NOT extract:
+- Pure satirical or parody content (like The Onion)
+- Obvious humor content
+
+DO extract claims from:
+- News articles
+- Opinion pieces and editorials (extract the factual claims used to support the opinions)
+- Analysis articles
+
+For each claim, provide:
+1. The exact claim from the article
+2. A concise search query to verify it (3-5 words)
+3. The importance level (high/medium/low)
+
+ARTICLE:
+{$content}
+
+Return ONLY valid JSON (no markdown):
+{
+    \"content_type\": \"news\" | \"opinion\" | \"satire\",
+    \"claims\": [
+        {
+            \"claim\": \"specific factual claim\",
+            \"search_query\": \"concise search terms\",
+            \"importance\": \"high\" | \"medium\" | \"low\"
         }
-        
-        // [Keep existing OpenRouter logic but add progress updates]
-        $current_date = current_time('F j, Y');
-        $website_name = get_bloginfo('name');
-        $website_url = home_url();
-        
-        $prompt = "You are a professional fact-checker for {$website_name}. Today is {$current_date}. Analyze this content and provide a comprehensive fact-check report in JSON format...";
-        // [... rest of existing prompt ...]
-        
-        if ($task_id) {
-            $this->update_progress($task_id, 60, 'verifying', 'Searching and verifying facts...');
-        }
-        
-        $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
-            'headers' => array(
-                'Authorization' => 'Bearer ' . $api_key,
-                'Content-Type' => 'application/json',
-                'HTTP-Referer' => home_url(),
-                'X-Title' => get_bloginfo('name')
-            ),
-            'body' => json_encode(array(
-                'model' => $model,
-                'messages' => array(
-                    array('role' => 'user', 'content' => $prompt)
-                ),
-                'max_tokens' => 3000,
-                'temperature' => 0.2
-            )),
-            'timeout' => 90
-        ));
-        
-        if ($task_id) {
-            $this->update_progress($task_id, 90, 'generating', 'Formatting final report...');
-        }
-        
-        if (is_wp_error($response)) {
-            throw new Exception('API request failed: ' . $response->get_error_message());
-        }
-        
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
-        
-        if (!isset($data['choices'][0]['message']['content'])) {
-            throw new Exception('Invalid API response');
-        }
-        
-        $ai_content = trim($data['choices'][0]['message']['content']);
-        $ai_content = preg_replace('/^```json\s*/', '', $ai_content);
-        $ai_content = preg_replace('/\s*```$/', '', $ai_content);
-        $result = json_decode($ai_content, true);
-        
-        if (!is_array($result)) {
-            throw new Exception('Failed to parse fact check results');
-        }
-        
-        $result['mode'] = 'openrouter';
-        
-        return $result;
-    }
-    
-    // [Include all the other existing methods: extract_claims, verify_claim_with_firecrawl, etc.]
-    // They remain the same, just ensure they work with the new progress system
-    
-    private function extract_claims($content) {
-        // [Keep existing implementation]
-        $api_key = $this->options['api_key'];
-        $model = $this->options['model'];
-        
-        $prompt = "Extract verifiable factual claims from this article. Return ONLY JSON with no markdown formatting...";
-        // [... rest of existing code ...]
-        
+    ]
+}";
+
         $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
@@ -645,7 +631,7 @@ class Facty {
         $ai_content = preg_replace('/\s*```$/', '', $ai_content);
         $result = json_decode($ai_content, true);
         
-        // Only skip satire content, allow opinions to be fact-checked
+        // MODIFIED: Only skip satire, allow opinions to be fact-checked
         if (isset($result['content_type']) && $result['content_type'] === 'satire') {
             return array();
         }
@@ -654,10 +640,10 @@ class Facty {
     }
     
     private function verify_claim_with_firecrawl($claim, $api_key) {
-        // [Keep existing implementation]
         $search_query = $claim['search_query'];
         $searches_per_claim = intval($this->options['firecrawl_searches_per_claim']);
         
+        // Search and scrape with Firecrawl
         $response = wp_remote_post('https://api.firecrawl.dev/v2/search', array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
@@ -669,7 +655,7 @@ class Facty {
                 'scrapeOptions' => array(
                     'formats' => array('markdown')
                 ),
-                'tbs' => 'qdr:m'
+                'tbs' => 'qdr:m' // Past month for recent info
             )),
             'timeout' => 45
         ));
@@ -697,12 +683,14 @@ class Facty {
                     'credibility' => 'medium'
                 );
                 
+                // Collect scraped content for verification
                 if (isset($result['markdown'])) {
                     $scraped_content .= substr($result['markdown'], 0, 800) . "\n\n";
                 }
             }
         }
         
+        // Verify claim against scraped content
         $verification = $this->verify_claim_against_sources($claim['claim'], $scraped_content);
         
         return array(
@@ -714,13 +702,24 @@ class Facty {
     }
     
     private function verify_claim_against_sources($claim, $scraped_content) {
-        // [Keep existing implementation]
         $api_key = $this->options['api_key'];
         $model = $this->options['model'];
         
-        $prompt = "Verify this claim against the provided source content: {$claim}...";
-        // [rest of existing code...]
-        
+        $prompt = "Verify this claim against the provided source content:
+
+CLAIM: {$claim}
+
+SOURCE CONTENT:
+{$scraped_content}
+
+Analyze and return ONLY valid JSON (no markdown):
+{
+    \"is_accurate\": true | false,
+    \"confidence\": \"high\" | \"medium\" | \"low\",
+    \"explanation\": \"brief explanation of verification\",
+    \"correction\": \"correct information if claim is false, otherwise empty string\"
+}";
+
         $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
@@ -774,16 +773,51 @@ class Facty {
     }
     
     private function generate_final_report($content, $verification_results, $all_sources) {
-        // [Keep existing implementation]
         $api_key = $this->options['api_key'];
         $model = $this->options['model'];
         $current_date = current_time('F j, Y');
         
         $verification_summary = json_encode($verification_results);
         
-        $prompt = "Based on the verification results, generate a comprehensive fact-check report...";
-        // [rest of existing code...]
-        
+        $prompt = "Based on the verification results below, generate a comprehensive fact-check report:
+
+ORIGINAL ARTICLE EXCERPT:
+{$content}
+
+VERIFICATION RESULTS:
+{$verification_summary}
+
+Today's Date: {$current_date}
+
+Generate a detailed report in ONLY valid JSON (no markdown):
+{
+    \"score\": 0-100,
+    \"status\": \"Accurate\" | \"Mostly Accurate\" | \"Partially Accurate\" | \"Mostly Inaccurate\" | \"False\",
+    \"description\": \"2-3 sentence summary\",
+    \"detailed_analysis\": {
+        \"claims_identified\": number,
+        \"claims_verified\": number,
+        \"claims_false\": number,
+        \"overall_assessment\": \"detailed paragraph\"
+    },
+    \"issues\": [
+        {
+            \"claim\": \"the claim\",
+            \"type\": \"Factual Error\" | \"Outdated Information\" | \"Misleading\" | \"Unverified\",
+            \"severity\": \"high\" | \"medium\" | \"low\",
+            \"description\": \"what's wrong\",
+            \"correct_information\": \"correct info\",
+            \"suggestion\": \"how to fix\"
+        }
+    ],
+    \"verified_claims\": [
+        {
+            \"claim\": \"accurate claim\",
+            \"verification\": \"why it's correct\"
+        }
+    ]
+}";
+
         $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
@@ -822,226 +856,370 @@ class Facty {
             throw new Exception('Failed to parse final report');
         }
         
+        // Add sources from Firecrawl searches
         $result['sources'] = array_slice($all_sources, 0, 8);
+        
+        // Add metadata
         $result['mode'] = 'firecrawl';
         $result['searches_performed'] = count($verification_results) * intval($this->options['firecrawl_searches_per_claim']);
         
         return $result;
     }
     
-    // [Include all other existing methods: cache, user status, email handling, settings, etc.]
-    // ... [Keep all remaining methods from original file] ...
+    private function analyze_content_openrouter($content) {
+        $api_key = $this->options['api_key'];
+        $model = $this->options['model'];
+        
+        // Get current date and website info
+        $current_date = current_time('F j, Y');
+        $website_name = get_bloginfo('name');
+        $website_url = home_url();
+        
+        // Prepare the comprehensive fact-checking prompt
+        $prompt = "You are a professional fact-checker working for {$website_name}.
+
+CONTEXT INFORMATION:
+- Today's Date: {$current_date}
+- Website: {$website_name} ({$website_url})
+- Your Role: Verify factual accuracy of published content
+
+═══════════════════════════════════════════════════════════════
+CRITICAL STEP 1: CONTENT TYPE DETECTION
+═══════════════════════════════════════════════════════════════
+
+BEFORE analyzing, determine the content type:
+
+🎭 SATIRE/PARODY/COMEDY Indicators:
+   - Absurd or impossible scenarios
+   - Obvious exaggeration for humor
+   - Fake advice columns or letters
+   - Impersonating public figures in humorous way
+   - \"The Onion\"-style writing
+   - Clearly joke headlines or premises
+   
+📰 NEWS/FACTUAL Indicators:
+   - Reporting real events
+   - Citing real sources
+   - Attempting serious journalism
+   - No obvious humor or satire markers
+
+💭 OPINION/EDITORIAL Indicators:
+   - Personal viewpoint pieces
+   - Clearly marked as opinion
+   - Subjective analysis
+
+IF SATIRE/COMEDY DETECTED:
+Return immediately with:
+{
+    \"content_type\": \"satire\",
+    \"score\": 100,
+    \"status\": \"Satire/Parody - Not Subject to Fact-Checking\",
+    \"description\": \"This is satirical or comedic content, not factual reporting.\",
+    \"issues\": [],
+    \"sources\": []
+}
+
+IF OPINION/EDITORIAL DETECTED:
+STILL fact-check the factual claims used within the opinion piece. Opinions should be verified for accuracy of supporting facts.
+
+═══════════════════════════════════════════════════════════════
+STEP 2: DETAILED FACT-CHECKING (For News/Factual/Opinion Content)
+═══════════════════════════════════════════════════════════════
+
+Your Analysis Process:
+1. IDENTIFY individual factual claims (not opinions)
+2. VERIFY each claim against current information
+3. EVALUATE accuracy with specific examples
+4. PROVIDE actionable corrections
+
+ARTICLE CONTENT TO ANALYZE:
+{$content}
+
+═══════════════════════════════════════════════════════════════
+REQUIRED OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════
+
+Return ONLY valid JSON (no markdown, no code blocks):
+
+{
+    \"content_type\": \"news\" | \"opinion\" | \"satire\",
+    \"score\": 0-100,
+    \"status\": \"Accurate\" | \"Mostly Accurate\" | \"Partially Accurate\" | \"Mostly Inaccurate\" | \"False\" | \"Satire - Not Subject to Fact-Checking\",
+    \"description\": \"2-3 sentence summary of findings\",
     
-    private function get_cached_result($post_id, $content_hash) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'facty_cache';
-        
-        $cached = $wpdb->get_row($wpdb->prepare(
-            "SELECT result FROM $table_name WHERE post_id = %d AND content_hash = %s AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)",
-            $post_id,
-            $content_hash
-        ));
-        
-        return $cached ? json_decode($cached->result, true) : null;
-    }
+    \"detailed_analysis\": {
+        \"claims_identified\": 5,
+        \"claims_verified\": 4,
+        \"claims_false\": 1,
+        \"overall_assessment\": \"Detailed paragraph explaining your analysis\"
+    },
     
-    private function cache_result($post_id, $content_hash, $result) {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'facty_cache';
-        
-        $wpdb->replace($table_name, array(
-            'post_id' => $post_id,
-            'content_hash' => $content_hash,
-            'result' => json_encode($result)
-        ));
-    }
+    \"issues\": [
+        {
+            \"claim\": \"The specific claim from the article\",
+            \"type\": \"Factual Error\" | \"Outdated Information\" | \"Misleading\" | \"Unverified\" | \"Missing Context\",
+            \"severity\": \"high\" | \"medium\" | \"low\",
+            \"description\": \"Detailed explanation of what's wrong\",
+            \"correct_information\": \"What the correct information should be\",
+            \"suggestion\": \"How to fix this\"
+        }
+    ],
     
-    private function get_user_status() {
-        if (is_user_logged_in()) {
-            return array(
-                'type' => 'logged_in',
-                'unlimited' => true
-            );
+    \"verified_claims\": [
+        {
+            \"claim\": \"Claim that checked out as accurate\",
+            \"verification\": \"Why this is correct\"
         }
-        
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'facty_users';
-        $ip_address = $this->get_client_ip();
-        
-        $user = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $table_name WHERE ip_address = %s ORDER BY last_used DESC LIMIT 1",
-            $ip_address
-        ));
-        
-        if (!$user) {
-            return array(
-                'type' => 'new',
-                'remaining' => $this->options['free_limit']
-            );
+    ],
+    
+    \"sources\": [
+        {
+            \"title\": \"Actual source title\",
+            \"url\": \"https://actual-url.com\",
+            \"credibility\": \"high\" | \"medium\" | \"low\",
+            \"relevance\": \"What this source verifies\"
         }
+    ],
+    
+    \"context_notes\": [
+        \"Important context point 1\",
+        \"Important context point 2\"
+    ]
+}
+
+SCORING GUIDELINES:
+90-100: Highly accurate, no significant errors
+75-89: Mostly accurate, minor issues
+60-74: Partially accurate, some significant issues
+40-59: Multiple factual errors
+0-39: Mostly or entirely false
+
+Remember: You're checking facts as of {$current_date}. Information changes over time.";
         
-        if ($user->is_registered) {
-            return array(
-                'type' => 'registered',
-                'unlimited' => true,
-                'email' => $user->email
-            );
-        }
-        
-        $remaining = max(0, $this->options['free_limit'] - $user->usage_count);
-        
-        return array(
-            'type' => 'free',
-            'remaining' => $remaining,
-            'email' => $user->email
+        // Prepare API request body
+        $api_body = array(
+            'model' => $model,
+            'messages' => array(
+                array(
+                    'role' => 'user',
+                    'content' => $prompt
+                )
+            ),
+            'max_tokens' => 4000,
+            'temperature' => 0.2
         );
-    }
-    
-    private function get_client_ip() {
-        $ip_keys = array('HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_FORWARDED', 'HTTP_X_CLUSTER_CLIENT_IP', 'HTTP_FORWARDED_FOR', 'HTTP_FORWARDED', 'REMOTE_ADDR');
         
-        foreach ($ip_keys as $key) {
-            if (array_key_exists($key, $_SERVER) === true) {
-                foreach (explode(',', $_SERVER[$key]) as $ip) {
-                    $ip = trim($ip);
-                    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false) {
-                        return $ip;
+        $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
+            'headers' => array(
+                'Authorization' => 'Bearer ' . $api_key,
+                'Content-Type' => 'application/json',
+                'HTTP-Referer' => home_url(),
+                'X-Title' => get_bloginfo('name')
+            ),
+            'body' => json_encode($api_body),
+            'timeout' => 120
+        ));
+        
+        if (is_wp_error($response)) {
+            throw new Exception('API request failed: ' . $response->get_error_message());
+        }
+        
+        $http_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        
+        if ($http_code !== 200) {
+            $error_data = json_decode($body, true);
+            $error_message = isset($error_data['error']['message']) ? $error_data['error']['message'] : 'API request failed';
+            throw new Exception('API Error (' . $http_code . '): ' . $error_message);
+        }
+        
+        $data = json_decode($body, true);
+        
+        if (!$data || !isset($data['choices'][0]['message']['content'])) {
+            throw new Exception('Invalid API response structure');
+        }
+        
+        $ai_content = trim($data['choices'][0]['message']['content']);
+        
+        // Clean up the AI response
+        $ai_content = preg_replace('/^```json\s*/', '', $ai_content);
+        $ai_content = preg_replace('/\s*```$/', '', $ai_content);
+        $ai_content = trim($ai_content);
+        
+        $result = json_decode($ai_content, true);
+        
+        if (!$result || !is_array($result)) {
+            return array(
+                'score' => 50,
+                'status' => 'Analysis Incomplete',
+                'description' => 'Analysis completed but response parsing failed.',
+                'issues' => array(),
+                'sources' => $this->extract_sources_from_response($body)
+            );
+        }
+        
+        // Ensure required fields exist
+        $result = array_merge(array(
+            'score' => 0,
+            'status' => 'Unknown',
+            'description' => 'No description provided',
+            'issues' => array(),
+            'sources' => array()
+        ), $result);
+        
+        // Validate score
+        $result['score'] = intval($result['score']);
+        if ($result['score'] < 0) $result['score'] = 0;
+        if ($result['score'] > 100) $result['score'] = 100;
+        
+        // If no sources in result, try to extract from response annotations
+        if (empty($result['sources'])) {
+            $result['sources'] = $this->extract_sources_from_response($body);
+        }
+        
+        // Add mode metadata
+        $result['mode'] = 'openrouter';
+        
+        return $result;
+    }
+
+    
+    private function extract_sources_from_response($response_body) {
+        $sources = array();
+        $data = json_decode($response_body, true);
+        
+        if (isset($data['choices'][0]['message']['annotations'])) {
+            foreach ($data['choices'][0]['message']['annotations'] as $annotation) {
+                if (isset($annotation['type']) && $annotation['type'] === 'web_search') {
+                    if (isset($annotation['web_search']['results'])) {
+                        foreach ($annotation['web_search']['results'] as $result) {
+                            if (isset($result['title']) && isset($result['url'])) {
+                                $sources[] = array(
+                                    'title' => $result['title'],
+                                    'url' => $result['url']
+                                );
+                            }
+                        }
                     }
                 }
             }
         }
         
-        return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '0.0.0.0';
+        return array_slice($sources, 0, 8);
     }
     
-    public function ajax_email_submit() {
-        check_ajax_referer('facty_nonce', 'nonce');
-        
-        $email = sanitize_email($_POST['email']);
-        
-        if (!is_email($email)) {
-            wp_send_json_error('Invalid email address');
-        }
-        
+    private function get_cached_result($post_id, $content) {
         global $wpdb;
-        $table_name = $wpdb->prefix . 'facty_users';
-        $ip_address = $this->get_client_ip();
         
-        $existing = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $table_name WHERE email = %s",
-            $email
+        $content_hash = hash('sha256', $content . $this->options['fact_check_mode']);
+        $table_name = $wpdb->prefix . 'facty_cache';
+        
+        $cached = $wpdb->get_var($wpdb->prepare(
+            "SELECT result FROM $table_name WHERE post_id = %d AND content_hash = %s AND created_at > %s",
+            $post_id,
+            $content_hash,
+            date('Y-m-d H:i:s', strtotime('-24 hours'))
         ));
         
-        if ($existing) {
-            $wpdb->update($table_name, array(
-                'last_used' => current_time('mysql')
-            ), array('email' => $email));
-        } else {
-            $wpdb->insert($table_name, array(
-                'email' => $email,
-                'ip_address' => $ip_address,
-                'usage_count' => 0,
-                'is_registered' => false
-            ));
-        }
-        
-        wp_send_json_success('Email saved successfully');
+        return $cached ? json_decode($cached, true) : false;
     }
     
-    public function ajax_signup() {
-        check_ajax_referer('facty_nonce', 'nonce');
-        
-        $name = sanitize_text_field($_POST['name']);
-        $email = sanitize_email($_POST['email']);
-        $password = $_POST['password'];
-        
-        if (!is_email($email)) {
-            wp_send_json_error('Invalid email address');
-        }
-        
-        if (strlen($password) < 6) {
-            wp_send_json_error('Password must be at least 6 characters');
-        }
-        
-        $user_id = wp_create_user($email, $password, $email);
-        
-        if (is_wp_error($user_id)) {
-            wp_send_json_error($user_id->get_error_message());
-        }
-        
-        wp_update_user(array(
-            'ID' => $user_id,
-            'display_name' => $name,
-            'first_name' => $name
-        ));
-        
+    private function cache_result($post_id, $content, $result) {
         global $wpdb;
-        $table_name = $wpdb->prefix . 'facty_users';
-        $ip_address = $this->get_client_ip();
         
-        $wpdb->replace($table_name, array(
-            'email' => $email,
-            'ip_address' => $ip_address,
-            'usage_count' => 0,
-            'is_registered' => true
-        ));
+        $content_hash = hash('sha256', $content . $this->options['fact_check_mode']);
+        $table_name = $wpdb->prefix . 'facty_cache';
         
-        wp_set_current_user($user_id);
-        wp_set_auth_cookie($user_id);
-        
-        wp_send_json_success('Account created successfully');
+        $wpdb->replace(
+            $table_name,
+            array(
+                'post_id' => $post_id,
+                'content_hash' => $content_hash,
+                'result' => json_encode($result)
+            ),
+            array('%d', '%s', '%s')
+        );
     }
     
     public function ajax_test_api() {
         check_ajax_referer('test_api_nonce', 'nonce');
         
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+            return;
+        }
+        
         $api_key = sanitize_text_field($_POST['api_key']);
         $model = sanitize_text_field($_POST['model']);
         
-        $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
-            'headers' => array(
-                'Authorization' => 'Bearer ' . $api_key,
-                'Content-Type' => 'application/json'
-            ),
-            'body' => json_encode(array(
-                'model' => $model,
-                'messages' => array(
-                    array('role' => 'user', 'content' => 'Say "test successful"')
-                ),
-                'max_tokens' => 10
-            )),
-            'timeout' => 30
-        ));
-        
-        if (is_wp_error($response)) {
-            wp_send_json_error('Connection failed: ' . $response->get_error_message());
+        if (empty($api_key)) {
+            wp_send_json_error('API key is required');
+            return;
         }
         
-        $code = wp_remote_retrieve_response_code($response);
-        
-        if ($code === 200) {
-            wp_send_json_success('API connection successful!');
-        } else {
-            wp_send_json_error('API returned error code: ' . $code);
+        try {
+            $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $api_key,
+                    'Content-Type' => 'application/json',
+                    'HTTP-Referer' => home_url(),
+                    'X-Title' => get_bloginfo('name')
+                ),
+                'body' => json_encode(array(
+                    'model' => $model,
+                    'messages' => array(
+                        array(
+                            'role' => 'user',
+                            'content' => 'Say "Connection successful" if you receive this message.'
+                        )
+                    ),
+                    'max_tokens' => 50
+                )),
+                'timeout' => 30
+            ));
+            
+            if (is_wp_error($response)) {
+                wp_send_json_error('Connection failed: ' . $response->get_error_message());
+                return;
+            }
+            
+            $http_code = wp_remote_retrieve_response_code($response);
+            $body = wp_remote_retrieve_body($response);
+            
+            if ($http_code !== 200) {
+                $error_data = json_decode($body, true);
+                $error_message = isset($error_data['error']['message']) ? $error_data['error']['message'] : 'Unknown error';
+                wp_send_json_error('API Error (' . $http_code . '): ' . $error_message);
+                return;
+            }
+            
+            $data = json_decode($body, true);
+            
+            if (!$data || !isset($data['choices'][0]['message']['content'])) {
+                wp_send_json_error('Invalid API response format');
+                return;
+            }
+            
+            wp_send_json_success('API connection successful! Model: ' . $model);
+            
+        } catch (Exception $e) {
+            wp_send_json_error('Test failed: ' . $e->getMessage());
         }
     }
+
     
-    // Admin menu and settings
     public function add_admin_menu() {
-        add_menu_page(
+        add_options_page(
             'Facty Settings',
             'Facty',
             'manage_options',
             'facty',
-            array($this, 'options_page'),
-            'dashicons-yes-alt',
-            90
+            array($this, 'options_page')
         );
         
-        add_submenu_page(
-            'facty',
+        add_management_page(
             'Facty Users',
-            'Users',
+            'Facty Users',
             'manage_options',
             'facty-users',
             array($this, 'users_page')
@@ -1051,95 +1229,128 @@ class Facty {
     public function settings_init() {
         register_setting('facty', 'facty_options');
         
-        // General Settings Section
         add_settings_section(
-            'facty_general_section',
-            'General Settings',
-            function() {
-                echo '<p>Configure your fact-checking plugin settings.</p>';
-            },
+            'fact_checker_section',
+            'Facty Settings',
+            array($this, 'settings_section_callback'),
             'facty'
         );
         
-        // Plugin Title Setting
-        add_settings_field(
-            'plugin_title',
-            'Plugin Title',
-            array($this, 'plugin_title_render'),
-            'facty',
-            'facty_general_section'
+        $fields = array(
+            'enabled' => 'Enable Facty',
+            'fact_check_mode' => 'Fact-Checking Mode',
+            'api_key' => 'OpenRouter API Key',
+            'model' => 'OpenRouter Model',
+            'firecrawl_api_key' => 'Firecrawl API Key',
+            'firecrawl_searches_per_claim' => 'Firecrawl: Searches Per Claim',
+            'firecrawl_max_claims' => 'Firecrawl: Max Claims to Check',
+            'description_text' => 'Widget Description',
+            'web_searches' => 'OpenRouter: Web Searches',
+            'search_context' => 'OpenRouter: Search Context',
+            'require_email' => 'Require Email for Visitors',
+            'free_limit' => 'Free Reports Limit',
+            'terms_url' => 'Terms of Use URL',
+            'privacy_url' => 'Privacy Policy URL',
+            'theme_mode' => 'Theme Mode',
+            'primary_color' => 'Primary Color',
+            'success_color' => 'Success Color',
+            'warning_color' => 'Warning Color',
+            'background_color' => 'Background Color'
         );
         
-        // [... Add all other settings fields from original ...]
-        
-        add_settings_field(
-            'enabled',
-            'Enable Plugin',
-            array($this, 'enabled_render'),
-            'facty',
-            'facty_general_section'
-        );
-        
-        add_settings_field(
-            'fact_check_mode',
-            'Fact Check Mode',
-            array($this, 'fact_check_mode_render'),
-            'facty',
-            'facty_general_section'
-        );
-        
-        add_settings_field(
-            'api_key',
-            'OpenRouter API Key',
-            array($this, 'api_key_render'),
-            'facty',
-            'facty_general_section'
-        );
-        
-        add_settings_field(
-            'firecrawl_api_key',
-            'Firecrawl API Key',
-            array($this, 'firecrawl_api_key_render'),
-            'facty',
-            'facty_general_section'
-        );
-        
-        add_settings_field(
-            'description_text',
-            'Description Text',
-            array($this, 'description_text_render'),
-            'facty',
-            'facty_general_section'
-        );
-        
-        // [... include all other field registrations ...]
+        foreach ($fields as $field => $title) {
+            add_settings_field(
+                $field,
+                $title,
+                array($this, $field . '_render'),
+                'facty',
+                'fact_checker_section'
+            );
+        }
     }
     
-    public function plugin_title_render() {
-        ?>
-        <input type='text' name='facty_options[plugin_title]' value='<?php echo esc_attr($this->options['plugin_title']); ?>' style="width: 300px;">
-        <p class="description">The title displayed in the fact-checker widget (e.g., "Facty", "Fact Check", "Verify")</p>
-        <?php
-    }
-    
-    // [... include all other render methods from original file ...]
-    
-    public function enabled_render() {
-        ?>
-        <label>
-            <input type='checkbox' name='facty_options[enabled]' <?php checked($this->options['enabled'], true); ?> value='1'>
-            Enable fact-checking on single posts
-        </label>
-        <?php
+    public function settings_section_callback() {
+        echo '<p>Configure your Facty plugin settings below.</p>';
+        echo '<div style="background: #e7f3ff; padding: 15px; border-left: 4px solid #2196f3; margin: 20px 0;">';
+        echo '<h3 style="margin-top: 0;">🔥 New: Firecrawl Mode</h3>';
+        echo '<p><strong>Choose between two powerful fact-checking modes:</strong></p>';
+        echo '<ul style="margin-left: 20px;">';
+        echo '<li><strong>OpenRouter Web Search:</strong> Fast, single-pass fact-checking using AI with web search</li>';
+        echo '<li><strong>Firecrawl Deep Research:</strong> Multi-step verification with full content scraping for maximum accuracy</li>';
+        echo '</ul>';
+        echo '<p><em>Firecrawl mode performs deeper analysis by scraping full content from sources and verifying each claim individually.</em></p>';
+        echo '</div>';
     }
     
     public function fact_check_mode_render() {
+        $modes = array(
+            'openrouter' => 'OpenRouter Web Search (Fast & Efficient)',
+            'firecrawl' => 'Firecrawl Deep Research (Detailed & Accurate)'
+        );
         ?>
-        <select name='facty_options[fact_check_mode]'>
-            <option value='openrouter' <?php selected($this->options['fact_check_mode'], 'openrouter'); ?>>OpenRouter (Fast, simple verification)</option>
-            <option value='firecrawl' <?php selected($this->options['fact_check_mode'], 'firecrawl'); ?>>Firecrawl (Deep research, slower)</option>
+        <select name='facty_options[fact_check_mode]' id="fact-check-mode-select">
+            <?php foreach ($modes as $value => $label): ?>
+                <option value='<?php echo $value; ?>' <?php selected($this->options['fact_check_mode'], $value); ?>><?php echo $label; ?></option>
+            <?php endforeach; ?>
         </select>
-        <p class="description">OpenRouter: Fast single-pass verification. Firecrawl: Deep multi-step research (requires Firecrawl API key)</p>
+        <p class="description">Choose your preferred fact-checking method</p>
+        <script>
+        jQuery(document).ready(function($) {
+            function toggleModeOptions() {
+                var mode = $('#fact-check-mode-select').val();
+                if (mode === 'firecrawl') {
+                    $('tr').has('input[name="facty_options[firecrawl_api_key]"]').show();
+                    $('tr').has('input[name="facty_options[firecrawl_searches_per_claim]"]').show();
+                    $('tr').has('input[name="facty_options[firecrawl_max_claims]"]').show();
+                    $('tr').has('select[name="facty_options[web_searches]"]').hide();
+                    $('tr').has('select[name="facty_options[search_context]"]').hide();
+                } else {
+                    $('tr').has('input[name="facty_options[firecrawl_api_key]"]').hide();
+                    $('tr').has('input[name="facty_options[firecrawl_searches_per_claim]"]').hide();
+                    $('tr').has('input[name="facty_options[firecrawl_max_claims]"]').hide();
+                    $('tr').has('select[name="facty_options[web_searches]"]').show();
+                    $('tr').has('select[name="facty_options[search_context]"]').show();
+                }
+            }
+            toggleModeOptions();
+            $('#fact-check-mode-select').on('change', toggleModeOptions);
+        });
+        </script>
+        <?php
+    }
+    
+    public function enabled_render() {
+        ?>
+        <input type='checkbox' name='facty_options[enabled]' <?php checked($this->options['enabled'], 1); ?> value='1'>
+        <p class="description">Enable fact checker globally on all single posts</p>
+        <?php
+    }
+    
+    public function require_email_render() {
+        ?>
+        <input type='checkbox' name='facty_options[require_email]' <?php checked($this->options['require_email'], 1); ?> value='1'>
+        <p class="description">Require visitors to enter email before accessing fact checker</p>
+        <?php
+    }
+    
+    public function free_limit_render() {
+        ?>
+        <input type='number' name='facty_options[free_limit]' value='<?php echo esc_attr($this->options['free_limit']); ?>' min="1" max="50" style="width: 80px;">
+        <p class="description">Number of free fact checks for visitors before requiring signup</p>
+        <?php
+    }
+    
+    public function terms_url_render() {
+        ?>
+        <input type='url' name='facty_options[terms_url]' value='<?php echo esc_attr($this->options['terms_url']); ?>' style="width: 400px;" placeholder="https://yoursite.com/terms">
+        <p class="description">URL to your Terms of Use page</p>
+        <?php
+    }
+    
+    public function privacy_url_render() {
+        ?>
+        <input type='url' name='facty_options[privacy_url]' value='<?php echo esc_attr($this->options['privacy_url']); ?>' style="width: 400px;" placeholder="https://yoursite.com/privacy">
+        <p class="description">URL to your Privacy Policy page</p>
         <?php
     }
     
@@ -1147,26 +1358,128 @@ class Facty {
         ?>
         <input type='password' name='facty_options[api_key]' value='<?php echo esc_attr($this->options['api_key']); ?>' style="width: 400px;">
         <button type="button" id="test-api-connection" class="button">Test Connection</button>
+        <p class="description">Your OpenRouter API key. Get one at <a href="https://openrouter.ai" target="_blank">openrouter.ai</a></p>
         <div id="api-test-result"></div>
-        <p class="description">Get your API key from <a href="https://openrouter.ai/keys" target="_blank">OpenRouter</a></p>
         <?php
     }
     
     public function firecrawl_api_key_render() {
         ?>
-        <input type='password' name='facty_options[firecrawl_api_key]' value='<?php echo esc_attr($this->options['firecrawl_api_key']); ?>' style="width: 400px;">
-        <p class="description">Required only for Firecrawl mode. Get your API key from <a href="https://www.firecrawl.dev/" target="_blank">Firecrawl</a></p>
+        <input type='password' name='facty_options[firecrawl_api_key]' value='<?php echo esc_attr($this->options['firecrawl_api_key']); ?>' style="width: 400px;" placeholder="fc-YOUR_API_KEY">
+        <p class="description">Your Firecrawl API key (required for Firecrawl mode). Get one at <a href="https://www.firecrawl.dev" target="_blank">firecrawl.dev</a></p>
+        <?php
+    }
+    
+    public function firecrawl_searches_per_claim_render() {
+        ?>
+        <input type='number' name='facty_options[firecrawl_searches_per_claim]' value='<?php echo esc_attr($this->options['firecrawl_searches_per_claim']); ?>' min="1" max="5" style="width: 80px;">
+        <p class="description">Number of sources to search and scrape per claim (1-5). Higher = more accurate but slower</p>
+        <?php
+    }
+    
+    public function firecrawl_max_claims_render() {
+        ?>
+        <input type='number' name='facty_options[firecrawl_max_claims]' value='<?php echo esc_attr($this->options['firecrawl_max_claims']); ?>' min="3" max="15" style="width: 80px;">
+        <p class="description">Maximum claims to extract and verify (3-15). Higher = more thorough but slower</p>
+        <?php
+    }
+    
+    public function model_render() {
+        $models = array(
+            'openai/gpt-4o' => 'GPT-4o (Recommended)',
+            'openai/gpt-4' => 'GPT-4',
+            'openai/gpt-3.5-turbo' => 'GPT-3.5 Turbo',
+            'anthropic/claude-3-sonnet' => 'Claude 3 Sonnet',
+            'anthropic/claude-3-haiku' => 'Claude 3 Haiku',
+            'google/gemini-pro' => 'Gemini Pro'
+        );
+        ?>
+        <select name='facty_options[model]'>
+            <?php foreach ($models as $value => $label): ?>
+                <option value='<?php echo $value; ?>' <?php selected($this->options['model'], $value); ?>><?php echo $label; ?></option>
+            <?php endforeach; ?>
+        </select>
+        <p class="description">AI model for fact-checking</p>
         <?php
     }
     
     public function description_text_render() {
         ?>
-        <input type='text' name='facty_options[description_text]' value='<?php echo esc_attr($this->options['description_text']); ?>' style="width: 500px;">
-        <p class="description">The description text shown below the plugin title</p>
+        <textarea name='facty_options[description_text]' rows='2' style="width: 500px;"><?php echo esc_textarea($this->options['description_text']); ?></textarea>
+        <p class="description">Text shown below the fact checker widget (supports plain text only)</p>
         <?php
     }
     
-    // [... Continue with all other render methods from original ...]
+    public function web_searches_render() {
+        $searches = array(3, 5, 7, 10);
+        ?>
+        <select name='facty_options[web_searches]'>
+            <?php foreach ($searches as $num): ?>
+                <option value='<?php echo $num; ?>' <?php selected($this->options['web_searches'], $num); ?>><?php echo $num; ?> searches</option>
+            <?php endforeach; ?>
+        </select>
+        <p class="description">Maximum web search results (OpenRouter mode)</p>
+        <?php
+    }
+    
+    public function search_context_render() {
+        $contexts = array(
+            'low' => 'Low - Basic queries',
+            'medium' => 'Medium - General queries (Recommended)',
+            'high' => 'High - Detailed research'
+        );
+        ?>
+        <select name='facty_options[search_context]'>
+            <?php foreach ($contexts as $value => $label): ?>
+                <option value='<?php echo $value; ?>' <?php selected($this->options['search_context'], $value); ?>><?php echo $label; ?></option>
+            <?php endforeach; ?>
+        </select>
+        <p class="description">Search context size (OpenRouter mode)</p>
+        <?php
+    }
+    
+    public function theme_mode_render() {
+        $modes = array(
+            'light' => 'Light Mode',
+            'dark' => 'Dark Mode'
+        );
+        ?>
+        <select name='facty_options[theme_mode]'>
+            <?php foreach ($modes as $value => $label): ?>
+                <option value='<?php echo $value; ?>' <?php selected($this->options['theme_mode'], $value); ?>><?php echo $label; ?></option>
+            <?php endforeach; ?>
+        </select>
+        <p class="description">Choose between light and dark theme for the fact checker</p>
+        <?php
+    }
+    
+    public function primary_color_render() {
+        ?>
+        <input type='color' name='facty_options[primary_color]' value='<?php echo esc_attr($this->options['primary_color']); ?>'>
+        <p class="description">Primary color for buttons and icons</p>
+        <?php
+    }
+    
+    public function success_color_render() {
+        ?>
+        <input type='color' name='facty_options[success_color]' value='<?php echo esc_attr($this->options['success_color']); ?>'>
+        <p class="description">Color for success indicators and high scores</p>
+        <?php
+    }
+    
+    public function warning_color_render() {
+        ?>
+        <input type='color' name='facty_options[warning_color]' value='<?php echo esc_attr($this->options['warning_color']); ?>'>
+        <p class="description">Color for warnings and issues</p>
+        <?php
+    }
+    
+    public function background_color_render() {
+        ?>
+        <input type='color' name='facty_options[background_color]' value='<?php echo esc_attr($this->options['background_color']); ?>'>
+        <p class="description">Background color for the fact checker box</p>
+        <?php
+    }
     
     public function users_page() {
         global $wpdb;
@@ -1242,13 +1555,14 @@ class Facty {
             </form>
             
             <div style="margin-top: 30px; padding: 20px; background: #f9f9f9; border-radius: 8px;">
-                <h2>About Version 4.1.0</h2>
-                <p><strong>New Features:</strong></p>
+                <h2>About Email Collection & Usage Limits</h2>
+                <p>This plugin collects visitor emails to provide fact-checking reports and enforce usage limits. Here's how it works:</p>
                 <ul>
-                    <li>✅ Background processing - No more timeouts!</li>
-                    <li>✅ Real-time progress tracking with detailed steps</li>
-                    <li>✅ Customizable plugin title</li>
-                    <li>✅ Improved error handling</li>
+                    <li><strong>Free Users:</strong> Can use <?php echo $this->options['free_limit']; ?> fact checks, then must sign up</li>
+                    <li><strong>Registered Users:</strong> Unlimited fact checks</li>
+                    <li><strong>Logged-in Users:</strong> Always unlimited access</li>
+                    <li><strong>Email Storage:</strong> Stored securely in your WordPress database</li>
+                    <li><strong>Privacy:</strong> Make sure your Terms and Privacy links are configured</li>
                 </ul>
                 <p><a href="<?php echo admin_url('tools.php?page=facty-users'); ?>" class="button">View User List →</a></p>
             </div>
@@ -1312,7 +1626,6 @@ class Facty {
             }
             .form-table td input[type="password"],
             .form-table td input[type="url"],
-            .form-table td input[type="text"],
             .form-table td input[type="number"],
             .form-table td select {
                 padding: 8px 12px;
