@@ -28,6 +28,13 @@ class Facty_Core {
         // Frontend hooks
         add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
         add_filter('the_content', array($this, 'add_fact_checker_to_content'));
+        
+        // Add fact-checked badge to post meta
+        add_filter('the_title', array($this, 'add_fact_checked_badge'), 10, 2);
+        
+        // Register demo page
+        add_action('init', array($this, 'register_demo_page'));
+        add_action('template_redirect', array($this, 'handle_demo_page'));
     }
     
     /**
@@ -124,10 +131,97 @@ class Facty_Core {
     private function get_fact_checker_html() {
         $user_status = Facty_Users::get_status($this->options);
         
-        $mode_label = 'Deep Research Mode';
+        $mode_label = 'OpenRouter Web Search';
+        if ($this->options['fact_check_mode'] === 'perplexity') {
+            $mode_label = 'Perplexity Sonar';
+        } elseif ($this->options['fact_check_mode'] === 'firecrawl') {
+            $mode_label = 'Firecrawl Deep Research';
+        } elseif ($this->options['fact_check_mode'] === 'jina') {
+            $mode_label = 'Jina DeepSearch';
+        }
         
         ob_start();
         include FACTY_PLUGIN_PATH . 'templates/fact-checker-widget.php';
         return ob_get_clean();
+    }
+    
+    /**
+     * Add fact-checked badge to post meta
+     */
+    public function add_fact_checked_badge($title, $id = null) {
+        // Only on single posts in main query
+        if (!is_single() || !in_the_loop() || !is_main_query()) {
+            return $title;
+        }
+        
+        // Check if this post has been fact-checked
+        if ($this->is_post_fact_checked($id)) {
+            $cached_result = Facty_Cache::get($id, get_post($id)->post_content, $this->options['fact_check_mode']);
+            
+            if ($cached_result && isset($cached_result['score'])) {
+                $score = intval($cached_result['score']);
+                $status = isset($cached_result['status']) ? $cached_result['status'] : 'Checked';
+                
+                // Determine badge color based on score
+                $badge_class = 'facty-badge-success';
+                if ($score < 70) {
+                    $badge_class = 'facty-badge-warning';
+                }
+                if ($score < 50) {
+                    $badge_class = 'facty-badge-error';
+                }
+                
+                $badge = '<span class="facty-verified-badge ' . esc_attr($badge_class) . '" title="Fact-checked: ' . esc_attr($status) . ' - Score: ' . $score . '/100">';
+                $badge .= '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+                $badge .= ' Fact-Checked (' . $score . '/100)';
+                $badge .= '</span>';
+                
+                // Inject badge after title
+                return $title . $badge;
+            }
+        }
+        
+        return $title;
+    }
+    
+    /**
+     * Check if post has been fact-checked
+     */
+    private function is_post_fact_checked($post_id) {
+        global $wpdb;
+        
+        if (!$post_id) {
+            return false;
+        }
+        
+        $table_name = $wpdb->prefix . 'facty_cache';
+        $count = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table_name WHERE post_id = %d",
+            $post_id
+        ));
+        
+        return $count > 0;
+    }
+    
+    /**
+     * Register demo page
+     */
+    public function register_demo_page() {
+        add_rewrite_rule(
+            '^fact-check-demo/?$',
+            'index.php?facty_demo=1',
+            'top'
+        );
+        add_rewrite_tag('%facty_demo%', '1');
+    }
+    
+    /**
+     * Handle demo page display
+     */
+    public function handle_demo_page() {
+        if (get_query_var('facty_demo') == '1') {
+            include FACTY_PLUGIN_PATH . 'templates/demo-page.php';
+            exit;
+        }
     }
 }

@@ -737,7 +737,7 @@ jQuery(document).ready(function ($) {
     // CTA Buttons
     var currentArticleUrl = window.location.href;
     var detailedAnalysisUrl =
-      "https://news.disinformationcommission/search/?prefill_url=" +
+      "https://news.disinformationcommission.com/search/?prefill_url=" +
       encodeURIComponent(currentArticleUrl);
 
     html += '<div class="fact-check-cta-buttons">';

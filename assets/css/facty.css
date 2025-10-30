@@ -1448,3 +1448,59 @@
     transform: none;
   }
 }
+
+/* ========================================
+   Fact-Checked Badge (Post Meta)
+   ======================================== */
+.facty-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 10px;
+  vertical-align: middle;
+  transition: all 0.2s ease;
+}
+
+.facty-verified-badge svg {
+  width: 14px;
+  height: 14px;
+}
+
+.facty-badge-success {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #10b981;
+}
+
+.facty-badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+}
+
+.facty-badge-error {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #ef4444;
+}
+
+.facty-verified-badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Make badge work with SmartMag theme meta */
+.entry-header .facty-verified-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.post-meta .facty-verified-badge {
+  margin-left: 8px;
+  margin-right: 8px;
+}
