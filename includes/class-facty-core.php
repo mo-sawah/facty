@@ -82,18 +82,19 @@ class Facty_Core {
      * Enqueue frontend scripts and styles
      */
     public function enqueue_scripts() {
+        // Always enqueue badge styles for fact-checked posts (on all pages)
+        wp_enqueue_style(
+            'facty-badge-style',
+            FACTY_PLUGIN_URL . 'assets/css/facty-badge.css',
+            array(),
+            FACTY_VERSION
+        );
+        
+        // Only enqueue fact-checker widget on single posts
         if (is_single() && $this->options['enabled']) {
             wp_enqueue_style(
                 'facty-style',
                 FACTY_PLUGIN_URL . 'assets/css/facty.css',
-                array(),
-                FACTY_VERSION
-            );
-            
-            // Enqueue badge styles for fact-checked posts
-            wp_enqueue_style(
-                'facty-badge-style',
-                FACTY_PLUGIN_URL . 'assets/css/facty-badge.css',
                 array(),
                 FACTY_VERSION
             );
@@ -158,6 +159,7 @@ class Facty_Core {
     
     /**
      * Add fact-checked badge to SmartMag post meta
+     * IMPROVED: Better error handling, caching, and performance
      */
     public function add_fact_check_meta_item($output, $item) {
         // Only add for 'fact_check' custom item
@@ -167,36 +169,55 @@ class Facty_Core {
         
         // Check if this post has been fact-checked
         $post_id = get_the_ID();
-        if (!$this->is_post_fact_checked($post_id)) {
+        if (!$post_id) {
             return '';
         }
         
-        $cached_result = Facty_Cache::get($post_id, get_post($post_id)->post_content, $this->options['fact_check_mode']);
+        // Check if this post has been fact-checked (with caching)
+        static $checked_posts = array();
         
-        if ($cached_result && isset($cached_result['score'])) {
-            $score = intval($cached_result['score']);
-            $status = isset($cached_result['status']) ? $cached_result['status'] : 'Checked';
-            
-            // Determine badge color based on score
-            $badge_class = 'facty-badge-success';
-            if ($score < 70) {
-                $badge_class = 'facty-badge-warning';
-            }
-            if ($score < 50) {
-                $badge_class = 'facty-badge-error';
-            }
-            
-            $output = sprintf(
-                '<span class="meta-item facty-verified-badge %1$s" title="%2$s">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                    <span class="fact-check-text">Fact-Checked</span>
-                    <span class="fact-check-score">%3$d/100</span>
-                </span>',
-                esc_attr($badge_class),
-                esc_attr('Fact-checked: ' . $status . ' - Score: ' . $score . '/100'),
-                $score
-            );
+        if (!isset($checked_posts[$post_id])) {
+            $checked_posts[$post_id] = $this->is_post_fact_checked($post_id);
         }
+        
+        if (!$checked_posts[$post_id]) {
+            return '';
+        }
+        
+        // Get the cached result
+        $post = get_post($post_id);
+        if (!$post) {
+            return '';
+        }
+        
+        $cached_result = Facty_Cache::get($post_id, $post->post_content, $this->options['fact_check_mode']);
+        
+        if (!$cached_result || !isset($cached_result['score'])) {
+            return '';
+        }
+        
+        $score = intval($cached_result['score']);
+        $status = isset($cached_result['status']) ? $cached_result['status'] : 'Checked';
+        
+        // Determine badge color based on score
+        $badge_class = 'facty-badge-success';
+        if ($score < 70) {
+            $badge_class = 'facty-badge-warning';
+        }
+        if ($score < 50) {
+            $badge_class = 'facty-badge-error';
+        }
+        
+        $output = sprintf(
+            '<span class="meta-item facty-verified-badge %1$s" title="%2$s">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                <span class="fact-check-text">Fact-Checked</span>
+                <span class="fact-check-score">%3$d/100</span>
+            </span>',
+            esc_attr($badge_class),
+            esc_attr('Fact-checked: ' . $status . ' - Score: ' . $score . '/100'),
+            $score
+        );
         
         return $output;
     }
@@ -274,15 +295,23 @@ class Facty_Core {
     
     /**
      * Check if post has been fact-checked
+     * IMPROVED: Better error handling and performance
      */
     private function is_post_fact_checked($post_id) {
         global $wpdb;
         
-        if (!$post_id) {
+        if (!$post_id || empty($post_id)) {
             return false;
         }
         
         $table_name = $wpdb->prefix . 'facty_cache';
+        
+        // Check if table exists
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {
+            error_log('Facty: Cache table does not exist');
+            return false;
+        }
+        
         $count = $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM $table_name WHERE post_id = %d",
             $post_id

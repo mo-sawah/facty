@@ -1,19 +1,15 @@
 <?php
 /**
- * Facty Editor Page - Functional Text Fact-Checker
- * Allows editors/journalists to paste text and fact-check it
+ * Facty Editor Page - Complete Fact-Checker for Editors
+ * Allows editors/journalists to paste text and get comprehensive fact-check reports
  * Access: yoursite.com/fact-check-editor
+ * 
+ * FIXED: Complete results rendering with all sections
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
-
-// Check if user is logged in (optional - remove this if you want public access)
-// if (!is_user_logged_in()) {
-//     wp_redirect(wp_login_url(home_url('/fact-check-editor')));
-//     exit;
-// }
 
 // Get options
 $options = get_option('facty_options', array());
@@ -25,6 +21,7 @@ $options = get_option('facty_options', array());
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fact-Check Editor | Facty</title>
+    <?php wp_head(); ?>
     <style>
         * {
             margin: 0;
@@ -205,211 +202,527 @@ $options = get_option('facty_options', array());
             height: 18px;
         }
         
-        .clear-btn {
+        .clear-btn, .sample-btn {
             padding: 12px 24px;
             background: #f0f0f1;
             color: #2c3338;
             border: 1px solid #8c8f94;
             border-radius: 6px;
             font-size: 14px;
-            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
         }
         
-        .clear-btn:hover {
-            background: #fff;
+        .clear-btn:hover, .sample-btn:hover {
+            background: #dcdcde;
         }
         
-        .sample-text-btn {
-            padding: 12px 24px;
-            background: transparent;
-            color: #2271b1;
-            border: 1px solid #2271b1;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .sample-text-btn:hover {
-            background: rgba(34, 113, 177, 0.05);
-        }
-        
-        .results-area {
-            display: none;
+        /* Progress Styles */
+        #fact-check-progress {
             margin-top: 30px;
-            padding-top: 30px;
-            border-top: 2px solid #f0f0f1;
         }
         
-        .results-area.active {
-            display: block;
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
         }
         
+        .progress-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1d2327;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .progress-icon {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .progress-percentage {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2271b1;
+        }
+        
+        .progress-bar {
+            height: 8px;
+            background: #f0f0f1;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #2271b1, #135e96);
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+        
+        .progress-steps {
+            display: grid;
+            gap: 12px;
+        }
+        
+        .progress-step {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            background: #f6f7f7;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+        
+        .progress-step.active {
+            background: #e0f2fe;
+            border: 1px solid #0284c7;
+        }
+        
+        .progress-step.completed {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+        }
+        
+        .step-icon {
+            width: 32px;
+            height: 32px;
+            background: #8c8f94;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        
+        .progress-step.active .step-icon {
+            background: #0284c7;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        .progress-step.completed .step-icon {
+            background: #10b981;
+        }
+        
+        .step-content {
+            flex: 1;
+        }
+        
+        .step-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1d2327;
+            margin-bottom: 4px;
+        }
+        
+        .step-status {
+            font-size: 13px;
+            color: #646970;
+        }
+        
+        /* Results Display Styles */
+        #fact-check-results {
+            margin-top: 30px;
+        }
+        
+        .results-display {
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .score-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+        }
+        
+        .score-display {
+            text-align: center;
+            min-width: 120px;
+        }
+        
+        .score-number {
+            font-size: 56px;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+        
+        .score-label {
+            font-size: 14px;
+            opacity: 0.9;
+            font-weight: 500;
+        }
+        
+        .score-description {
+            flex: 1;
+        }
+        
+        .score-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .score-subtitle {
+            font-size: 15px;
+            opacity: 0.95;
+            line-height: 1.6;
+        }
+        
+        .status-good { color: #d1fae5; }
+        .status-warning { color: #fef3c7; }
+        .status-error { color: #fee2e2; }
+        
+        /* Issues Section */
+        .issues-section {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        
+        .issues-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #dc2626;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .issue-item {
+            background: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 20px;
+            margin-bottom: 16px;
+            border-radius: 6px;
+        }
+        
+        .issue-item.severity-low {
+            background: #fffbeb;
+            border-left-color: #f59e0b;
+        }
+        
+        .issue-item.severity-medium {
+            background: #fef3c7;
+            border-left-color: #f59e0b;
+        }
+        
+        .issue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .issue-type {
+            font-weight: 600;
+            color: #991b1b;
+            font-size: 14px;
+        }
+        
+        .issue-severity {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.1);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        
+        .issue-claim,
+        .issue-problem,
+        .issue-facts,
+        .issue-impact {
+            margin-bottom: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .issue-claim { color: #1e40af; }
+        .issue-problem { color: #991b1b; }
+        .issue-facts { color: #065f46; }
+        .issue-impact { color: #4b5563; }
+        
+        /* Verified Section */
+        .verified-section {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        
+        .verified-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #16a34a;
+            margin-bottom: 16px;
+        }
+        
+        .verified-item {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        
+        .verified-icon {
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            background: #16a34a;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+        
+        .verified-claim {
+            font-size: 14px;
+            color: #1f2937;
+            margin-bottom: 4px;
+        }
+        
+        .verified-confidence {
+            font-size: 12px;
+            color: #6b7280;
+        }
+        
+        /* Sources Section */
+        .sources-section {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 25px;
+        }
+        
+        .sources-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 16px;
+        }
+        
+        .source-item {
+            padding: 12px 16px;
+            background: #f9fafb;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        
+        .source-item:hover {
+            background: #f3f4f6;
+        }
+        
+        .source-link {
+            color: #2563eb;
+            text-decoration: none;
+            font-size: 14px;
+            flex: 1;
+        }
+        
+        .source-link:hover {
+            text-decoration: underline;
+        }
+        
+        .source-credibility {
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #dbeafe;
+            color: #1e40af;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .error-section {
+            padding: 40px;
+            text-align: center;
+            background: #fef2f2;
+            border-radius: 8px;
+            border: 2px dashed #fca5a5;
+        }
+        
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .error-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #991b1b;
+            margin-bottom: 12px;
+        }
+        
+        .error-message {
+            font-size: 16px;
+            color: #6b7280;
+            line-height: 1.6;
+        }
+        
+        /* Responsive */
         @media (max-width: 768px) {
-            .editor-content {
-                padding: 20px;
+            .editor-header {
+                flex-direction: column;
+                gap: 12px;
+                text-align: center;
+            }
+            
+            .score-section {
+                flex-direction: column;
+                text-align: center;
             }
             
             .editor-actions {
-                flex-direction: column;
-                width: 100%;
+                flex-wrap: wrap;
             }
             
             .fact-check-btn,
             .clear-btn,
-            .sample-text-btn {
+            .sample-btn {
                 width: 100%;
-                justify-content: center;
             }
         }
     </style>
-    
-    <?php
-    // Enqueue fact-checker CSS and JS
-    wp_enqueue_style('facty-style', FACTY_PLUGIN_URL . 'assets/css/facty.css', array(), FACTY_VERSION);
-    wp_enqueue_script('jquery');
-    wp_enqueue_script('facty-script', FACTY_PLUGIN_URL . 'assets/js/facty.js', array('jquery'), FACTY_VERSION, true);
-    
-    wp_localize_script('facty-script', 'factChecker', array(
-        'ajaxUrl' => admin_url('admin-ajax.php'),
-        'nonce' => wp_create_nonce('facty_nonce'),
-        'theme_mode' => isset($options['theme_mode']) ? $options['theme_mode'] : 'light',
-        'require_email' => false,
-        'free_limit' => 999,
-        'terms_url' => isset($options['terms_url']) ? $options['terms_url'] : '',
-        'privacy_url' => isset($options['privacy_url']) ? $options['privacy_url'] : '',
-        'fact_check_mode' => isset($options['fact_check_mode']) ? $options['fact_check_mode'] : 'perplexity',
-        'colors' => array(
-            'primary' => isset($options['primary_color']) ? $options['primary_color'] : '#3b82f6',
-            'success' => isset($options['success_color']) ? $options['success_color'] : '#059669',
-            'warning' => isset($options['warning_color']) ? $options['warning_color'] : '#f59e0b',
-            'background' => isset($options['background_color']) ? $options['background_color'] : '#f8fafc'
-        )
-    ));
-    
-    wp_print_styles();
-    wp_print_scripts();
-    ?>
 </head>
 <body>
     <div class="editor-header">
         <div class="editor-logo">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
             </svg>
-            Facty - Fact-Check Editor
+            Facty Editor
         </div>
-        <div class="editor-badge">EDITOR TOOL</div>
+        <div class="editor-badge">Professional Fact-Checking Tool</div>
     </div>
     
     <div class="editor-container">
         <div class="editor-intro">
-            <h1>✍️ Fact-Check Editor</h1>
-            <p>Paste or write any text below and click "Check Facts" to verify accuracy using AI analysis with real-time web search.</p>
+            <h1>📝 Fact-Check Any Text</h1>
+            <p>Paste your article, press release, or content below to get an instant, comprehensive fact-check report powered by AI.</p>
         </div>
         
         <div class="editor-workspace">
             <div class="editor-tabs">
-                <button class="editor-tab active">Write & Check</button>
+                <button class="editor-tab active">Text Editor</button>
             </div>
             
             <div class="editor-content">
                 <div class="text-editor-area">
-                    <label for="fact-check-text">Your Text</label>
-                    <textarea 
-                        id="fact-check-text" 
-                        placeholder="Paste or write your article, news story, or any text you want to fact-check...
-
-Example: 
-'The government announced a $500 billion infrastructure plan today. Transportation Secretary Jennifer Martinez said the plan will create 2 million jobs. The program includes $200 billion for highways and $150 billion for public transit.'"
-                    ></textarea>
+                    <label for="fact-check-text">Enter or paste your text (minimum 50 characters):</label>
+                    <textarea id="fact-check-text" placeholder="Paste your article, press release, or any text you want to fact-check..."></textarea>
                     <div class="char-count">
-                        <span id="char-count">0</span> characters | <span id="word-count">0</span> words
+                        <span id="char-count">0</span> characters • <span id="word-count">0</span> words
                     </div>
                 </div>
                 
                 <div class="editor-actions">
-                    <button class="fact-check-btn" id="start-fact-check" disabled>
+                    <button id="start-fact-check" class="fact-check-btn" disabled>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                         </svg>
                         Check Facts
                     </button>
-                    <button class="clear-btn" id="clear-text">Clear</button>
-                    <button class="sample-text-btn" id="load-sample">Load Sample Text</button>
+                    <button id="clear-text" class="clear-btn">Clear</button>
+                    <button id="load-sample" class="sample-btn">Load Sample</button>
                 </div>
                 
-                <div class="results-area" id="results-area">
-                    <div class="fact-check-container" data-post-id="editor-custom" data-user-status='{"logged_in":false,"usage_count":0,"can_use":true,"email":"","is_registered":false}'>
-                        <div class="fact-check-box">
-                            <div id="fact-check-progress" class="fact-check-progress" style="display: none;">
-                                <div class="progress-header">
-                                    <div class="progress-title">
-                                        <span class="progress-icon">⚡</span>
-                                        <span>Analyzing Text...</span>
-                                    </div>
-                                    <div class="progress-percentage">0%</div>
-                                </div>
-                                
-                                <div class="progress-bar">
-                                    <div class="progress-fill" style="width: 0%;"></div>
-                                </div>
-                                
-                                <div class="progress-steps">
-                                    <div class="progress-step" data-stage="starting">
-                                        <div class="step-icon">1</div>
-                                        <div class="step-content">
-                                            <div class="step-label">Initializing</div>
-                                            <div class="step-status">Preparing fact check...</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="progress-step" data-stage="analyzing">
-                                        <div class="step-icon">2</div>
-                                        <div class="step-content">
-                                            <div class="step-label">AI Analysis</div>
-                                            <div class="step-status">Analyzing with AI...</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="progress-step" data-stage="searching">
-                                        <div class="step-icon">3</div>
-                                        <div class="step-content">
-                                            <div class="step-label">Source Search</div>
-                                            <div class="step-status">Searching sources...</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="progress-step" data-stage="verifying">
-                                        <div class="step-icon">4</div>
-                                        <div class="step-content">
-                                            <div class="step-label">Verification</div>
-                                            <div class="step-status">Verifying facts...</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="progress-step" data-stage="generating">
-                                        <div class="step-icon">5</div>
-                                        <div class="step-content">
-                                            <div class="step-label">Report Generation</div>
-                                            <div class="step-status">Generating report...</div>
-                                        </div>
-                                    </div>
+                <div id="results-area">
+                    <div id="fact-check-progress" style="display: none;">
+                        <div class="progress-header">
+                            <div class="progress-title">
+                                <span class="progress-icon">⚡</span>
+                                <span>Analyzing Text...</span>
+                            </div>
+                            <div class="progress-percentage">0%</div>
+                        </div>
+                        
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 0%;"></div>
+                        </div>
+                        
+                        <div class="progress-steps">
+                            <div class="progress-step" data-stage="starting">
+                                <div class="step-icon">1</div>
+                                <div class="step-content">
+                                    <div class="step-label">Initializing</div>
+                                    <div class="step-status">Preparing fact check...</div>
                                 </div>
                             </div>
                             
-                            <div id="fact-check-results" class="results-container" style="display: none;"></div>
+                            <div class="progress-step" data-stage="analyzing">
+                                <div class="step-icon">2</div>
+                                <div class="step-content">
+                                    <div class="step-label">AI Analysis</div>
+                                    <div class="step-status">Analyzing with AI...</div>
+                                </div>
+                            </div>
+                            
+                            <div class="progress-step" data-stage="searching">
+                                <div class="step-icon">3</div>
+                                <div class="step-content">
+                                    <div class="step-label">Source Search</div>
+                                    <div class="step-status">Searching sources...</div>
+                                </div>
+                            </div>
+                            
+                            <div class="progress-step" data-stage="verifying">
+                                <div class="step-icon">4</div>
+                                <div class="step-content">
+                                    <div class="step-label">Verification</div>
+                                    <div class="step-status">Verifying facts...</div>
+                                </div>
+                            </div>
+                            
+                            <div class="progress-step" data-stage="generating">
+                                <div class="step-icon">5</div>
+                                <div class="step-content">
+                                    <div class="step-label">Report Generation</div>
+                                    <div class="step-status">Generating report...</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
+                    
+                    <div id="fact-check-results" style="display: none;"></div>
                 </div>
             </div>
         </div>
     </div>
-    
-    <?php wp_print_footer_scripts(); ?>
     
     <script>
     jQuery(document).ready(function($) {
@@ -441,7 +754,6 @@ Example:
             if (confirm('Clear all text?')) {
                 textarea.val('');
                 updateCounts();
-                resultsArea.removeClass('active');
                 $('#fact-check-results').hide().empty();
                 $('#fact-check-progress').hide();
             }
@@ -465,7 +777,6 @@ Example:
                 return;
             }
             
-            resultsArea.addClass('active');
             $('#fact-check-results').hide().empty();
             $('#fact-check-progress').show();
             
@@ -482,7 +793,6 @@ Example:
                 },
                 success: function(response) {
                     if (response.success) {
-                        // Start polling for progress
                         pollProgress(response.data.task_id);
                     } else {
                         showError(response.data);
@@ -534,26 +844,120 @@ Example:
             $('.progress-step[data-stage="' + stage + '"]').prevAll().addClass('completed');
         }
         
-        // Show results
+        // Show results with complete rendering
         function showResults(result) {
             $('#fact-check-progress').hide();
             
-            // Use the existing displayResults function from facty.js
-            if (typeof window.displayResults === 'function') {
-                window.displayResults(result, $('#fact-check-results'));
-            } else {
-                // Fallback simple display
-                var html = '<div class="score-section">';
-                html += '<div class="score-number">' + result.score + '</div>';
-                html += '<div class="score-title">' + result.status + '</div>';
-                html += '<div class="score-subtitle">' + result.description + '</div>';
-                html += '</div>';
-                $('#fact-check-results').html(html);
+            var scoreColor = '#059669';
+            var statusClass = 'status-good';
+            var statusText = '✓ Verified';
+            
+            if (result.score < 50) {
+                scoreColor = '#ef4444';
+                statusClass = 'status-error';
+                statusText = '✗ Concerns Found';
+            } else if (result.score < 75) {
+                scoreColor = '#f59e0b';
+                statusClass = 'status-warning';
+                statusText = '⚠ Review Needed';
             }
             
-            $('#fact-check-results').show();
+            var html = '<div class="results-display">';
+            
+            // Score section
+            html += '<div class="score-section">';
+            html += '<div class="score-display">';
+            html += '<div class="score-number" style="color: ' + scoreColor + ';">' + result.score + '</div>';
+            html += '<div class="score-label">Accuracy Score</div>';
+            html += '</div>';
+            html += '<div class="score-description">';
+            html += '<div class="score-title ' + statusClass + '">' + statusText + ' <span style="font-weight: 400; opacity: 0.7;">' + (result.status || '') + '</span></div>';
+            html += '<div class="score-subtitle">' + escapeHtml(result.description || '') + '</div>';
+            html += '</div>';
+            html += '</div>';
+            
+            // Issues section
+            if (result.issues && result.issues.length > 0) {
+                html += '<div class="issues-section">';
+                html += '<div class="issues-title">⚠️ Issues Found (' + result.issues.length + ')</div>';
+                result.issues.forEach(function(issue) {
+                    var severityClass = 'severity-' + (issue.severity || 'medium');
+                    html += '<div class="issue-item ' + severityClass + '">';
+                    html += '<div class="issue-header">';
+                    html += '<span class="issue-type">' + escapeHtml(issue.type || 'Issue') + '</span>';
+                    html += '<span class="issue-severity">' + (issue.severity || 'medium') + ' priority</span>';
+                    html += '</div>';
+                    
+                    if (issue.what_article_says || issue.claim) {
+                        html += '<div class="issue-claim"><strong>📰 Text says:</strong><br>"' + escapeHtml(issue.what_article_says || issue.claim) + '"</div>';
+                    }
+                    if (issue.the_problem) {
+                        html += '<div class="issue-problem"><strong>❌ The problem:</strong><br>' + escapeHtml(issue.the_problem) + '</div>';
+                    }
+                    if (issue.actual_facts) {
+                        html += '<div class="issue-facts"><strong>✅ Actual facts:</strong><br>' + escapeHtml(issue.actual_facts) + '</div>';
+                    }
+                    if (issue.why_it_matters) {
+                        html += '<div class="issue-impact"><strong>💡 Why this matters:</strong><br>' + escapeHtml(issue.why_it_matters) + '</div>';
+                    }
+                    
+                    html += '</div>';
+                });
+                html += '</div>';
+            }
+            
+            // Verified facts section
+            if (result.verified_facts && result.verified_facts.length > 0) {
+                html += '<div class="verified-section">';
+                html += '<div class="verified-title">✅ Verified Claims (' + result.verified_facts.length + ')</div>';
+                html += '<div class="verified-list">';
+                result.verified_facts.forEach(function(fact) {
+                    html += '<div class="verified-item">';
+                    html += '<span class="verified-icon">✓</span>';
+                    html += '<div class="verified-content">';
+                    html += '<div class="verified-claim">' + escapeHtml(fact.claim) + '</div>';
+                    if (fact.confidence) {
+                        html += '<div class="verified-confidence">Confidence: <strong>' + fact.confidence + '</strong></div>';
+                    }
+                    html += '</div></div>';
+                });
+                html += '</div></div>';
+            }
+            
+            // Sources section
+            if (result.sources && result.sources.length > 0) {
+                html += '<div class="sources-section">';
+                html += '<div class="sources-title">🔗 Sources Checked (' + result.sources.length + ')</div>';
+                html += '<div class="sources-list">';
+                result.sources.forEach(function(source) {
+                    var credibilityClass = 'credibility-' + (source.credibility || 'medium');
+                    html += '<div class="source-item ' + credibilityClass + '">';
+                    html += '<a href="' + escapeHtml(source.url || '#') + '" target="_blank" rel="nofollow" class="source-link">' + escapeHtml(source.title || source.url || 'Source') + '</a>';
+                    if (source.credibility) {
+                        html += '<span class="source-credibility">' + source.credibility + '</span>';
+                    }
+                    html += '</div>';
+                });
+                html += '</div></div>';
+            }
+            
+            html += '</div>';
+            
+            $('#fact-check-results').html(html).show();
             
             checkBtn.prop('disabled', false).html('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg> Check Facts');
+        }
+        
+        // Escape HTML helper
+        function escapeHtml(text) {
+            var map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
         }
         
         // Show error
@@ -563,7 +967,7 @@ Example:
                 '<div class="error-section">' +
                 '<div class="error-icon">⚠</div>' +
                 '<div class="error-title">Analysis Failed</div>' +
-                '<div class="error-message">' + message + '</div>' +
+                '<div class="error-message">' + escapeHtml(message) + '</div>' +
                 '</div>'
             ).show();
             
