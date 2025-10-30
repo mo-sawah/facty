@@ -2,7 +2,7 @@
 /**
  * Plugin Name: facty
  * Description: AI-powered fact-checking plugin that verifies article accuracy using OpenRouter with web search
- * Version: 3.0.5
+ * Version: 3.0.6
  * Author: Mohamed Sawah
  * Author URI: https://sawahsolutions.com
  * License: GPL v2 or later
@@ -178,7 +178,7 @@ class Facty {
                                 <circle cx="12" cy="12" r="9"></circle>
                             </svg>
                         </div>
-                        <h3>Fact Checker</h3>
+                        <h3>Facty</h3>
                     </div>
                     <button class="check-button">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -491,7 +491,7 @@ class Facty {
             
             wp_send_json_success($result);
         } catch (Exception $e) {
-            error_log('Fact Checker Error: ' . $e->getMessage());
+            error_log('Facty Error: ' . $e->getMessage());
             wp_send_json_error($e->getMessage());
         }
     }
@@ -516,17 +516,12 @@ class Facty {
     private function analyze_content($content) {
         $api_key = $this->options['api_key'];
         $model = $this->options['model'];
-        $web_searches = intval($this->options['web_searches']);
-        $search_context = $this->options['search_context'];
-        
-        // Use OpenRouter's online model for web search
-        $online_model = $model . ':online';
         
         // Prepare the comprehensive fact-checking prompt
-        $prompt = "You are a professional facty. Analyze the following article content using web search to verify factual claims.
+        $prompt = "You are a professional fact checker. Analyze the following article content and verify factual claims.
 
 IMPORTANT INSTRUCTIONS:
-1. Use web search to verify key factual claims in the article
+1. Verify key factual claims in the article
 2. Rate overall accuracy on a scale of 0-100
 3. Identify any outdated, incorrect, or misleading information
 4. Provide specific improvement suggestions
@@ -535,11 +530,11 @@ IMPORTANT INSTRUCTIONS:
 Article Content:
 {$content}
 
-Search and analyze this content thoroughly. Respond ONLY with valid JSON in this exact format:
+Analyze this content thoroughly. Respond ONLY with valid JSON in this exact format:
 {
     \"score\": 85,
     \"status\": \"Mostly Accurate\",
-    \"description\": \"Brief description of your findings based on web search results\",
+    \"description\": \"Brief description of your findings\",
     \"issues\": [
         {
             \"type\": \"Outdated Information\",
@@ -549,17 +544,17 @@ Search and analyze this content thoroughly. Respond ONLY with valid JSON in this
     ],
     \"sources\": [
         {
-            \"title\": \"Actual source title from web search\",
-            \"url\": \"https://actual-source-url.com\"
+            \"title\": \"Source title\",
+            \"url\": \"https://source-url.com\"
         }
     ]
 }
 
-Focus on factual accuracy and provide real sources from your web search results.";
+Focus on factual accuracy.";
         
-        // Prepare API request body with web search options
+        // Prepare API request body
         $api_body = array(
-            'model' => $online_model,
+            'model' => $model,
             'messages' => array(
                 array(
                     'role' => 'user',
@@ -567,11 +562,7 @@ Focus on factual accuracy and provide real sources from your web search results.
                 )
             ),
             'max_tokens' => 2500,
-            'temperature' => 0.3,
-            'web_search_options' => array(
-                'max_results' => $web_searches,
-                'search_context_size' => $search_context
-            )
+            'temperature' => 0.3
         );
         
         $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
@@ -617,7 +608,7 @@ Focus on factual accuracy and provide real sources from your web search results.
             return array(
                 'score' => 50,
                 'status' => 'Analysis Incomplete',
-                'description' => 'Web search completed but response parsing failed.',
+                'description' => 'Analysis completed but response parsing failed.',
                 'issues' => array(),
                 'sources' => $this->extract_sources_from_response($body)
             );
@@ -644,6 +635,8 @@ Focus on factual accuracy and provide real sources from your web search results.
         
         return $result;
     }
+
+
     
     private function extract_sources_from_response($response_body) {
         $sources = array();
@@ -719,8 +712,6 @@ Focus on factual accuracy and provide real sources from your web search results.
         }
         
         try {
-            $online_model = $model . ':online';
-            
             $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $api_key,
@@ -729,19 +720,16 @@ Focus on factual accuracy and provide real sources from your web search results.
                     'X-Title' => get_bloginfo('name')
                 ),
                 'body' => json_encode(array(
-                    'model' => $online_model,
+                    'model' => $model,
                     'messages' => array(
                         array(
                             'role' => 'user',
-                            'content' => 'Search the web for "OpenRouter web search feature" and confirm it works. Respond with: Connection and web search successful.'
+                            'content' => 'Say "Connection successful" if you receive this message.'
                         )
                     ),
-                    'max_tokens' => 100,
-                    'web_search_options' => array(
-                        'max_results' => 3
-                    )
+                    'max_tokens' => 50
                 )),
-                'timeout' => 60
+                'timeout' => 30
             ));
             
             if (is_wp_error($response)) {
@@ -766,17 +754,19 @@ Focus on factual accuracy and provide real sources from your web search results.
                 return;
             }
             
-            wp_send_json_success('API and web search connection successful! Model: ' . $online_model);
+            wp_send_json_success('API connection successful! Model: ' . $model);
             
         } catch (Exception $e) {
             wp_send_json_error('Test failed: ' . $e->getMessage());
         }
     }
+
+
     
     public function add_admin_menu() {
         add_options_page(
             'Facty Settings',
-            'Fact Checker',
+            'Facty',
             'manage_options',
             'facty',
             array($this, 'options_page')
@@ -802,7 +792,7 @@ Focus on factual accuracy and provide real sources from your web search results.
         );
         
         $fields = array(
-            'enabled' => 'Enable Fact Checker',
+            'enabled' => 'Enable Facty',
             'api_key' => 'OpenRouter API Key',
             'model' => 'OpenRouter Model',
             'web_searches' => 'Number of Web Searches',
@@ -830,7 +820,7 @@ Focus on factual accuracy and provide real sources from your web search results.
     }
     
     public function settings_section_callback() {
-        echo '<p>Configure your Fact Checker plugin settings below. This plugin uses OpenRouter\'s web search feature to verify factual claims.</p>';
+        echo '<p>Configure your Facty plugin settings below. This plugin uses OpenRouter\'s web search feature to verify factual claims.</p>';
     }
     
     public function enabled_render() {
@@ -892,7 +882,7 @@ Focus on factual accuracy and provide real sources from your web search results.
                 <option value='<?php echo $value; ?>' <?php selected($this->options['model'], $value); ?>><?php echo $label; ?></option>
             <?php endforeach; ?>
         </select>
-        <p class="description">AI model for fact-checking (will use :online version for web search)</p>
+        <p class="description">AI model for fact-checking</p>
         <?php
     }
     
