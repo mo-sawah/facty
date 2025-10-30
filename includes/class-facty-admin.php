@@ -262,8 +262,6 @@ class Facty_Admin {
         $sanitized['api_key'] = sanitize_text_field($input['api_key']);
         $sanitized['model'] = sanitize_text_field($input['model']);
         $sanitized['description_text'] = sanitize_textarea_field($input['description_text']);
-        $sanitized['web_searches'] = intval($input['web_searches']);
-        $sanitized['search_context'] = sanitize_text_field($input['search_context']);
         $sanitized['theme_mode'] = sanitize_text_field($input['theme_mode']);
         $sanitized['primary_color'] = sanitize_hex_color($input['primary_color']);
         $sanitized['success_color'] = sanitize_hex_color($input['success_color']);
@@ -506,12 +504,12 @@ class Facty_Admin {
         ?>
         <select name="facty_options[fact_check_mode]" class="regular-text">
             <option value="openrouter" <?php selected($mode, 'openrouter'); ?>>OpenRouter (Quick Check - 60-90s)</option>
-            <option value="jina" <?php selected($mode, 'jina'); ?>>Jina Grounding (Ultra-Fast - 20-30s)</option>
+            <option value="jina" <?php selected($mode, 'jina'); ?>>Jina DeepSearch (Ultra-Fast - 30-45s)</option>
             <option value="firecrawl" <?php selected($mode, 'firecrawl'); ?>>Firecrawl (Deep Research - 2-3min)</option>
         </select>
         <p class="description">
             <strong>OpenRouter:</strong> Balanced speed and accuracy using AI + web search<br>
-            <strong>Jina:</strong> Ultra-fast fact grounding (NEW - much faster!)<br>
+            <strong>Jina DeepSearch:</strong> Ultra-fast AI-powered search, read & reason fact-checking<br>
             <strong>Firecrawl:</strong> Most thorough research with deep source analysis
         </p>
         <?php
@@ -573,7 +571,7 @@ class Facty_Admin {
             <span class="facty-status-badge facty-status-success">✓ Key configured</span>
         <?php endif; ?>
         <p class="description">
-            Required for Jina mode. Get your FREE key at <a href="https://jina.ai/" target="_blank">jina.ai</a> - Ultra-fast fact checking!
+            Required for Jina DeepSearch mode. Get your FREE API key (10M free tokens) at <a href="https://jina.ai/?sui=apikey" target="_blank">jina.ai</a> - Ultra-fast AI-powered fact checking with search, read & reason!
         </p>
         <?php
     }

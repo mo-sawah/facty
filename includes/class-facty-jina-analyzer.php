@@ -1,8 +1,8 @@
 <?php
 /**
- * Facty Jina Grounding Analyzer
- * NEW: Faster fact-checking using Jina AI's Grounding API
- * Much faster than traditional web search methods
+ * Facty Jina DeepSearch Analyzer
+ * FIXED: Now uses correct Jina DeepSearch API for ultra-fast fact-checking
+ * API Docs: https://jina.ai/deepsearch/
  */
 
 if (!defined('ABSPATH')) {
@@ -18,99 +18,163 @@ class Facty_Jina_Analyzer {
     }
     
     /**
-     * Fast analysis using Jina Grounding
+     * Fast analysis using Jina DeepSearch
      */
     public function analyze($content, $task_id = null) {
-        $jina_api_key = $this->options['jina_api_key']; // You'll need to add this to settings
+        $jina_api_key = $this->options['jina_api_key'];
         
         if (empty($jina_api_key)) {
             throw new Exception('Jina API key not configured');
         }
         
         if ($task_id) {
-            $this->update_progress($task_id, 20, 'analyzing', 'Fast fact-checking with Jina...');
+            $this->update_progress($task_id, 20, 'analyzing', 'Starting Jina DeepSearch analysis...');
         }
         
         $current_date = current_time('F j, Y');
         
-        // Step 1: Generate factual claims using lightweight AI
+        // Extract key claims from the article
         $claims = $this->extract_claims($content);
         
-        if ($task_id) {
-            $this->update_progress($task_id, 40, 'verifying', 'Grounding ' . count($claims) . ' claims...');
+        if (empty($claims)) {
+            throw new Exception('No factual claims found in article');
         }
         
-        // Step 2: Ground each claim using Jina
+        if ($task_id) {
+            $this->update_progress($task_id, 30, 'analyzing', 'Extracted ' . count($claims) . ' claims for verification...');
+        }
+        
+        // Verify all claims using Jina DeepSearch
         $results = array();
         $total_claims = count($claims);
         
         foreach ($claims as $index => $claim) {
             if ($task_id) {
-                $percent = 40 + (($index + 1) / $total_claims * 50);
-                $this->update_progress($task_id, $percent, 'verifying', 'Verifying claim ' . ($index + 1) . '/' . $total_claims);
+                $percent = 30 + (($index + 1) / $total_claims * 60);
+                $this->update_progress($task_id, $percent, 'verifying', 'Verifying claim ' . ($index + 1) . '/' . $total_claims . '...');
             }
             
-            $ground_result = $this->ground_claim($claim, $jina_api_key);
-            $results[] = $ground_result;
+            $result = $this->verify_claim($claim, $jina_api_key, $current_date);
+            $results[] = $result;
+            
+            // Small delay to avoid rate limits
+            usleep(200000); // 0.2 seconds
         }
         
         if ($task_id) {
-            $this->update_progress($task_id, 95, 'generating', 'Generating report...');
+            $this->update_progress($task_id, 95, 'generating', 'Compiling final report...');
         }
         
-        // Step 3: Compile results
-        return $this->compile_results($results, count($claims));
+        // Compile results into final report
+        return $this->compile_results($results, $total_claims, $content);
     }
     
     /**
      * Extract factual claims from content
      */
     private function extract_claims($content) {
-        // Simple extraction: split into sentences and filter for factual claims
+        // Split into sentences
         $sentences = preg_split('/[.!?]+/', $content);
         $claims = array();
         
         foreach ($sentences as $sentence) {
             $sentence = trim($sentence);
-            if (strlen($sentence) < 15) continue; // Skip very short
-            if (strlen($sentence) > 200) continue; // Skip very long
             
-            // Skip questions and opinions
+            // Skip very short or very long sentences
+            if (strlen($sentence) < 20 || strlen($sentence) > 250) continue;
+            
+            // Skip questions
             if (strpos($sentence, '?') !== false) continue;
-            if (preg_match('/\b(I think|believe|feel|opinion|seems|might|maybe|should)\b/i', $sentence)) continue;
             
-            // Include if it looks factual
-            if (preg_match('/\b(is|are|was|were|has|have|will|according to|reported|said|announced)\b/i', $sentence)) {
+            // Skip obvious opinions
+            if (preg_match('/\b(I think|believe|feel|opinion|seems|might|maybe|should|could|would)\b/i', $sentence)) {
+                continue;
+            }
+            
+            // Include sentences with factual indicators
+            if (preg_match('/\b(is|are|was|were|has|have|had|will|according to|reported|said|announced|confirmed|data shows|research|study|statistics|percent|million|billion|year|date)\b/i', $sentence)) {
                 $claims[] = $sentence;
             }
         }
         
-        // Limit to 8 claims for speed
-        return array_slice($claims, 0, 8);
+        // Limit to 10 claims for efficiency
+        return array_slice($claims, 0, 10);
     }
     
     /**
-     * Ground a single claim using Jina API
+     * Verify a claim using Jina DeepSearch API
      */
-    private function ground_claim($claim, $api_key) {
-        $response = wp_remote_post('https://api.jina.ai/v1/grounding', array(
+    private function verify_claim($claim, $api_key, $current_date) {
+        // Define response schema for structured output
+        $schema = array(
+            'type' => 'object',
+            'properties' => array(
+                'statement' => array(
+                    'type' => 'string',
+                    'description' => 'The statement being checked'
+                ),
+                'validity' => array(
+                    'type' => 'string',
+                    'enum' => array('true', 'false', 'partially_true', 'unverifiable'),
+                    'description' => 'Whether the statement is valid'
+                ),
+                'confidence' => array(
+                    'type' => 'string',
+                    'enum' => array('high', 'medium', 'low'),
+                    'description' => 'Confidence level in the assessment'
+                ),
+                'explanation' => array(
+                    'type' => 'string',
+                    'description' => 'Brief explanation of the validity assessment'
+                ),
+                'sources' => array(
+                    'type' => 'array',
+                    'items' => array(
+                        'type' => 'object',
+                        'properties' => array(
+                            'title' => array('type' => 'string'),
+                            'url' => array('type' => 'string')
+                        )
+                    ),
+                    'description' => 'Sources used to verify the claim'
+                )
+            ),
+            'required' => array('statement', 'validity', 'confidence', 'explanation')
+        );
+        
+        $request_body = array(
+            'model' => 'jina-deepsearch-v1',
+            'messages' => array(
+                array(
+                    'role' => 'user',
+                    'content' => "Today is {$current_date}. Fact-check this statement using reliable web sources: \"{$claim}\"\n\nReturn a structured assessment with validity (true/false/partially_true/unverifiable), confidence level, explanation, and sources."
+                )
+            ),
+            'response_format' => array(
+                'type' => 'json_schema',
+                'json_schema' => $schema
+            ),
+            'reasoning_effort' => 'low',
+            'max_returned_urls' => 3
+        );
+        
+        $response = wp_remote_post('https://deepsearch.jina.ai/v1/chat/completions', array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
                 'Content-Type' => 'application/json'
             ),
-            'body' => json_encode(array(
-                'text' => $claim,
-                'return_related_facts' => true
-            )),
-            'timeout' => 15
+            'body' => json_encode($request_body),
+            'timeout' => 60
         ));
         
         if (is_wp_error($response)) {
+            error_log('Jina API Error: ' . $response->get_error_message());
             return array(
                 'claim' => $claim,
-                'verified' => false,
+                'validity' => 'unverifiable',
                 'confidence' => 'low',
-                'error' => $response->get_error_message()
+                'explanation' => 'API request failed: ' . $response->get_error_message(),
+                'sources' => array()
             );
         }
         
@@ -118,106 +182,183 @@ class Facty_Jina_Analyzer {
         $body = wp_remote_retrieve_body($response);
         
         if ($http_code !== 200) {
+            error_log('Jina API HTTP Error ' . $http_code . ': ' . $body);
+            $error_data = json_decode($body, true);
+            $error_message = isset($error_data['error']['message']) ? $error_data['error']['message'] : 'API request failed';
+            
             return array(
                 'claim' => $claim,
-                'verified' => false,
+                'validity' => 'unverifiable',
                 'confidence' => 'low',
-                'error' => 'API error: ' . $http_code
+                'explanation' => 'API error: ' . $error_message,
+                'sources' => array()
             );
         }
         
         $data = json_decode($body, true);
         
-        if (!$data) {
+        if (!$data || !isset($data['choices'][0]['message']['content'])) {
+            error_log('Jina API Invalid Response: ' . $body);
             return array(
                 'claim' => $claim,
-                'verified' => false,
+                'validity' => 'unverifiable',
                 'confidence' => 'low',
-                'error' => 'Invalid response'
+                'explanation' => 'Invalid API response format',
+                'sources' => array()
             );
         }
         
-        // Parse Jina response
-        $grounding_score = isset($data['score']) ? $data['score'] : 0.5;
-        $factuality = isset($data['factuality']) ? $data['factuality'] : 'unknown';
-        $sources = isset($data['sources']) ? $data['sources'] : array();
+        // Parse the structured response
+        $content = $data['choices'][0]['message']['content'];
+        $result = json_decode($content, true);
         
-        return array(
+        if (!$result || !is_array($result)) {
+            error_log('Jina Response Parse Error: ' . $content);
+            return array(
+                'claim' => $claim,
+                'validity' => 'unverifiable',
+                'confidence' => 'low',
+                'explanation' => 'Could not parse fact-check response',
+                'sources' => array()
+            );
+        }
+        
+        // Ensure required fields
+        $result = array_merge(array(
             'claim' => $claim,
-            'verified' => $grounding_score > 0.7,
-            'confidence' => $grounding_score > 0.8 ? 'high' : ($grounding_score > 0.6 ? 'medium' : 'low'),
-            'factuality' => $factuality,
-            'score' => $grounding_score,
-            'sources' => array_slice($sources, 0, 2)
-        );
+            'validity' => 'unverifiable',
+            'confidence' => 'low',
+            'explanation' => 'No explanation provided',
+            'sources' => array()
+        ), $result);
+        
+        return $result;
     }
     
     /**
      * Compile all results into final report
      */
-    private function compile_results($results, $total_claims) {
+    private function compile_results($results, $total_claims, $original_content) {
         $verified_count = 0;
-        $unverified_count = 0;
+        $false_count = 0;
+        $partially_true_count = 0;
+        $unverifiable_count = 0;
+        
         $issues = array();
         $verified_facts = array();
         $all_sources = array();
         
         foreach ($results as $result) {
-            if (isset($result['error'])) {
-                continue; // Skip failed groundings
+            $validity = isset($result['validity']) ? $result['validity'] : 'unverifiable';
+            $confidence = isset($result['confidence']) ? $result['confidence'] : 'low';
+            
+            // Count by validity
+            switch ($validity) {
+                case 'true':
+                    $verified_count++;
+                    $verified_facts[] = array(
+                        'claim' => $result['claim'],
+                        'confidence' => $confidence
+                    );
+                    break;
+                case 'false':
+                    $false_count++;
+                    $issues[] = array(
+                        'claim' => $result['claim'],
+                        'type' => 'Factual Error',
+                        'severity' => 'high',
+                        'what_article_says' => $result['claim'],
+                        'the_problem' => 'This claim is false',
+                        'actual_facts' => isset($result['explanation']) ? $result['explanation'] : 'Verified as incorrect',
+                        'why_it_matters' => 'False information misleads readers and damages credibility'
+                    );
+                    break;
+                case 'partially_true':
+                    $partially_true_count++;
+                    $issues[] = array(
+                        'claim' => $result['claim'],
+                        'type' => 'Misleading',
+                        'severity' => 'medium',
+                        'what_article_says' => $result['claim'],
+                        'the_problem' => 'This claim is only partially true',
+                        'actual_facts' => isset($result['explanation']) ? $result['explanation'] : 'Requires additional context',
+                        'why_it_matters' => 'Partial truths can be misleading without proper context'
+                    );
+                    break;
+                default: // unverifiable
+                    $unverifiable_count++;
+                    if ($confidence !== 'high') { // Only report low-confidence unverifiable claims
+                        $issues[] = array(
+                            'claim' => $result['claim'],
+                            'type' => 'Unverified',
+                            'severity' => 'low',
+                            'what_article_says' => $result['claim'],
+                            'the_problem' => 'This claim could not be verified',
+                            'actual_facts' => isset($result['explanation']) ? $result['explanation'] : 'No reliable sources found',
+                            'why_it_matters' => 'Unverified claims should be approached with caution'
+                        );
+                    }
+                    break;
             }
             
-            if ($result['verified']) {
-                $verified_count++;
-                $verified_facts[] = array(
-                    'claim' => $result['claim'],
-                    'confidence' => $result['confidence']
-                );
-            } else {
-                $unverified_count++;
-                
-                $severity = 'medium';
-                if ($result['confidence'] === 'low') {
-                    $severity = 'high';
-                }
-                
-                $issues[] = array(
-                    'claim' => $result['claim'],
-                    'type' => 'Unverified',
-                    'severity' => $severity,
-                    'what_article_says' => $result['claim'],
-                    'the_problem' => 'This claim could not be verified against reliable sources.',
-                    'actual_facts' => 'Unable to confirm or deny this claim with available sources.',
-                    'why_it_matters' => 'Unverified claims may be inaccurate or misleading. Reader discretion advised.'
-                );
-            }
-            
+            // Collect sources
             if (!empty($result['sources'])) {
                 foreach ($result['sources'] as $source) {
-                    $all_sources[] = $source;
+                    if (isset($source['url']) && !empty($source['url'])) {
+                        $all_sources[] = array(
+                            'title' => isset($source['title']) ? $source['title'] : 'Source',
+                            'url' => $source['url'],
+                            'credibility' => 'high'
+                        );
+                    }
                 }
             }
         }
         
-        // Calculate score
+        // Calculate overall score
         $score = 100;
         if ($total_claims > 0) {
-            $score = round(($verified_count / $total_claims) * 100);
+            // Weight: true = 100%, partially_true = 60%, unverifiable = 40%, false = 0%
+            $weighted_score = (
+                ($verified_count * 100) +
+                ($partially_true_count * 60) +
+                ($unverifiable_count * 40) +
+                ($false_count * 0)
+            ) / $total_claims;
+            
+            $score = round($weighted_score);
         }
         
         // Determine status
         $status = 'Verified';
-        if ($score < 50) {
-            $status = 'False';
-        } elseif ($score < 70) {
-            $status = 'Multiple Errors';
-        } elseif ($score < 85) {
-            $status = 'Needs Review';
-        } elseif ($score < 95) {
+        if ($score >= 95) {
+            $status = 'Verified';
+        } elseif ($score >= 85) {
             $status = 'Mostly Accurate';
+        } elseif ($score >= 70) {
+            $status = 'Needs Review';
+        } elseif ($score >= 50) {
+            $status = 'Mixed Accuracy';
+        } else {
+            if ($false_count > $total_claims / 2) {
+                $status = 'False';
+            } else {
+                $status = 'Multiple Errors';
+            }
         }
         
-        $description = "Checked {$total_claims} factual claims. {$verified_count} verified, {$unverified_count} unverified.";
+        // Check if satirical
+        if (preg_match('/\b(satire|satirical|parody|joke|humor|humorous|comedy)\b/i', $original_content)) {
+            $score = 100;
+            $status = 'Satire';
+            $issues = array();
+        }
+        
+        $description = "Analyzed {$total_claims} claims using Jina DeepSearch. {$verified_count} verified";
+        if ($false_count > 0) $description .= ", {$false_count} false";
+        if ($partially_true_count > 0) $description .= ", {$partially_true_count} partially true";
+        if ($unverifiable_count > 0) $description .= ", {$unverifiable_count} unverifiable";
+        $description .= ".";
         
         return array(
             'score' => $score,
@@ -225,8 +366,8 @@ class Facty_Jina_Analyzer {
             'description' => $description,
             'issues' => $issues,
             'verified_facts' => $verified_facts,
-            'sources' => array_slice(array_unique($all_sources, SORT_REGULAR), 0, 10),
-            'mode' => 'jina'
+            'sources' => array_slice(array_unique($all_sources, SORT_REGULAR), 0, 15),
+            'mode' => 'jina-deepsearch'
         );
     }
     

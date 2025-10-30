@@ -121,7 +121,13 @@ class Facty_Core {
      */
     private function get_fact_checker_html() {
         $user_status = Facty_Users::get_status($this->options);
-        $mode_label = $this->options['fact_check_mode'] === 'firecrawl' ? 'Firecrawl Deep Research' : 'OpenRouter Web Search';
+        
+        $mode_label = 'OpenRouter Web Search';
+        if ($this->options['fact_check_mode'] === 'firecrawl') {
+            $mode_label = 'Firecrawl Deep Research';
+        } elseif ($this->options['fact_check_mode'] === 'jina') {
+            $mode_label = 'Jina DeepSearch';
+        }
         
         ob_start();
         include FACTY_PLUGIN_PATH . 'templates/fact-checker-widget.php';
