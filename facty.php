@@ -2,7 +2,7 @@
 /**
  * Plugin Name: facty
  * Description: AI-powered fact-checking plugin that verifies article accuracy using OpenRouter with web search
- * Version: 3.0.6
+ * Version: 3.0.7
  * Author: Mohamed Sawah
  * Author URI: https://sawahsolutions.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('FACTY_VERSION', '3.0.5');
+define('FACTY_VERSION', '3.0.7');
 define('FACTY_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('FACTY_PLUGIN_PATH', plugin_dir_path(__FILE__));
 
@@ -48,6 +48,7 @@ class Facty {
             'enabled' => true,
             'api_key' => '',
             'model' => 'openai/gpt-4',
+            'description_text' => 'Verify the accuracy of this article using AI analysis and real-time sources.',
             'web_searches' => 5,
             'search_context' => 'medium',
             'theme_mode' => 'light',
@@ -187,7 +188,7 @@ class Facty {
                         <span>Check Facts</span>
                     </button>
                 </div>
-                <p class="fact-check-description">Verify the accuracy of this article using The Disinformation Commission analysis and real-time sources.</p>
+                <p class="fact-check-description"><?php echo esc_html($this->options['description_text']); ?></p>
                 
                 <!-- Email Capture Form -->
                 <div class="email-capture-form" id="email-capture-form" style="display: none;">
@@ -517,40 +518,128 @@ class Facty {
         $api_key = $this->options['api_key'];
         $model = $this->options['model'];
         
+        // Get current date and website info
+        $current_date = current_time('F j, Y');
+        $website_name = get_bloginfo('name');
+        $website_url = home_url();
+        
         // Prepare the comprehensive fact-checking prompt
-        $prompt = "You are a professional fact checker. Analyze the following article content and verify factual claims.
+        $prompt = "You are a professional fact-checker working for {$website_name}.
 
-IMPORTANT INSTRUCTIONS:
-1. Verify key factual claims in the article
-2. Rate overall accuracy on a scale of 0-100
-3. Identify any outdated, incorrect, or misleading information
-4. Provide specific improvement suggestions
-5. Return results in EXACT JSON format (no markdown, no extra text)
+CONTEXT INFORMATION:
+- Today's Date: {$current_date}
+- Website: {$website_name} ({$website_url})
+- Your Role: Verify factual accuracy of published content
 
-Article Content:
+═══════════════════════════════════════════════════════════════
+CRITICAL STEP 1: CONTENT TYPE DETECTION
+═══════════════════════════════════════════════════════════════
+
+BEFORE analyzing, determine the content type:
+
+🎭 SATIRE/PARODY/COMEDY Indicators:
+   - Absurd or impossible scenarios
+   - Obvious exaggeration for humor
+   - Fake advice columns or letters
+   - Impersonating public figures in humorous way
+   - \"The Onion\"-style writing
+   - Clearly joke headlines or premises
+   
+📰 NEWS/FACTUAL Indicators:
+   - Reporting real events
+   - Citing real sources
+   - Attempting serious journalism
+   - No obvious humor or satire markers
+
+💭 OPINION/EDITORIAL Indicators:
+   - Personal viewpoint pieces
+   - Clearly marked as opinion
+   - Subjective analysis
+
+IF SATIRE/COMEDY DETECTED:
+Return immediately with:
+{
+    \"content_type\": \"satire\",
+    \"score\": 100,
+    \"status\": \"Satire/Parody - Not Subject to Fact-Checking\",
+    \"description\": \"This is satirical or comedic content, not factual reporting.\",
+    \"issues\": [],
+    \"sources\": []
+}
+
+═══════════════════════════════════════════════════════════════
+STEP 2: DETAILED FACT-CHECKING (For News/Factual Content Only)
+═══════════════════════════════════════════════════════════════
+
+Your Analysis Process:
+1. IDENTIFY individual factual claims (not opinions)
+2. VERIFY each claim against current information
+3. EVALUATE accuracy with specific examples
+4. PROVIDE actionable corrections
+
+ARTICLE CONTENT TO ANALYZE:
 {$content}
 
-Analyze this content thoroughly. Respond ONLY with valid JSON in this exact format:
+═══════════════════════════════════════════════════════════════
+REQUIRED OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════
+
+Return ONLY valid JSON (no markdown, no code blocks):
+
 {
-    \"score\": 85,
-    \"status\": \"Mostly Accurate\",
-    \"description\": \"Brief description of your findings\",
+    \"content_type\": \"news\" | \"opinion\" | \"satire\",
+    \"score\": 0-100,
+    \"status\": \"Accurate\" | \"Mostly Accurate\" | \"Partially Accurate\" | \"Mostly Inaccurate\" | \"False\" | \"Satire - Not Subject to Fact-Checking\",
+    \"description\": \"2-3 sentence summary of findings\",
+    
+    \"detailed_analysis\": {
+        \"claims_identified\": 5,
+        \"claims_verified\": 4,
+        \"claims_false\": 1,
+        \"overall_assessment\": \"Detailed paragraph explaining your analysis\"
+    },
+    
     \"issues\": [
         {
-            \"type\": \"Outdated Information\",
-            \"description\": \"Specific description of what's wrong\",
-            \"suggestion\": \"Specific suggestion for correction\"
+            \"claim\": \"The specific claim from the article\",
+            \"type\": \"Factual Error\" | \"Outdated Information\" | \"Misleading\" | \"Unverified\" | \"Missing Context\",
+            \"severity\": \"high\" | \"medium\" | \"low\",
+            \"description\": \"Detailed explanation of what's wrong\",
+            \"correct_information\": \"What the correct information should be\",
+            \"suggestion\": \"How to fix this\"
         }
     ],
+    
+    \"verified_claims\": [
+        {
+            \"claim\": \"Claim that checked out as accurate\",
+            \"verification\": \"Why this is correct\"
+        }
+    ],
+    
     \"sources\": [
         {
-            \"title\": \"Source title\",
-            \"url\": \"https://source-url.com\"
+            \"title\": \"Actual source title\",
+            \"url\": \"https://actual-url.com\",
+            \"credibility\": \"high\" | \"medium\" | \"low\",
+            \"relevance\": \"What this source verifies\"
         }
+    ],
+    
+    \"context_notes\": [
+        \"Important context point 1\",
+        \"Important context point 2\"
     ]
 }
 
-Focus on factual accuracy.";
+SCORING GUIDELINES:
+90-100: Highly accurate, no significant errors
+75-89: Mostly accurate, minor issues
+60-74: Partially accurate, some significant issues
+40-59: Multiple factual errors
+0-39: Mostly or entirely false
+
+Remember: You're checking facts as of {$current_date}. Information changes over time.";
         
         // Prepare API request body
         $api_body = array(
@@ -561,8 +650,8 @@ Focus on factual accuracy.";
                     'content' => $prompt
                 )
             ),
-            'max_tokens' => 2500,
-            'temperature' => 0.3
+            'max_tokens' => 4000,
+            'temperature' => 0.2
         );
         
         $response = wp_remote_post('https://openrouter.ai/api/v1/chat/completions', array(
@@ -795,6 +884,7 @@ Focus on factual accuracy.";
             'enabled' => 'Enable Facty',
             'api_key' => 'OpenRouter API Key',
             'model' => 'OpenRouter Model',
+            'description_text' => 'Widget Description',
             'web_searches' => 'Number of Web Searches',
             'search_context' => 'Search Context Size',
             'require_email' => 'Require Email for Visitors',
@@ -883,6 +973,13 @@ Focus on factual accuracy.";
             <?php endforeach; ?>
         </select>
         <p class="description">AI model for fact-checking</p>
+        <?php
+    }
+    
+    public function description_text_render() {
+        ?>
+        <textarea name='facty_options[description_text]' rows='2' style="width: 500px;"><?php echo esc_textarea($this->options['description_text']); ?></textarea>
+        <p class="description">Text shown below the fact checker widget (supports plain text only)</p>
         <?php
     }
     
