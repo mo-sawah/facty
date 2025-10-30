@@ -52,14 +52,14 @@ class Facty_Perplexity_Analyzer {
         }
         
         if ($task_id) {
-            $this->update_progress($task_id, 30, 'analyzing', 'AI analyzing article and searching web sources...');
+            $this->update_progress($task_id, 30, 'analyzing', 'Analyzing article and searching web sources...');
         }
         
         // OPTIMIZED SINGLE CALL: Extract claims AND verify them with real-time web search
         $prompt = $this->build_fact_check_prompt($content, $current_date);
         
         if ($task_id) {
-            $this->update_progress($task_id, 50, 'verifying', 'Perplexity searching and verifying facts...');
+            $this->update_progress($task_id, 50, 'verifying', 'Searching and verifying facts...');
         }
         
         try {
