@@ -4,6 +4,7 @@ jQuery(document).ready(function ($) {
   // Cache for storing results per post ID to handle autoload
   var factCheckCache = {};
   var activeRequests = {};
+  var progressPollers = {};
 
   // Initialize the fact checker (called on page load and autoload)
   function initFactChecker() {
@@ -30,6 +31,7 @@ jQuery(document).ready(function ($) {
       var postId = container.data("post-id");
       var userStatus = container.data("user-status");
       var resultsContainer = container.find("#fact-check-results");
+      var progressContainer = container.find("#fact-check-progress");
       var button = container.find(".check-button");
       var emailForm = container.find("#email-capture-form");
       var signupForm = container.find("#signup-form");
@@ -40,9 +42,10 @@ jQuery(document).ready(function ($) {
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg><span>Check Facts</span>'
       );
 
-      // Hide all forms initially
+      // Hide all forms and progress initially
       emailForm.hide();
       signupForm.hide();
+      progressContainer.hide();
 
       // Clear results unless they belong to current post
       if (postId && factCheckCache[postId]) {
@@ -267,26 +270,34 @@ jQuery(document).ready(function ($) {
     checkUserAccessAndProceed(container);
   };
 
-  function checkUserAccessAndProceed(container) {
+  // Make this function global so it can be called from the HTML onclick
+  window.checkUserAccessAndProceed = function (container) {
     var userStatus = container.data("user-status");
     var emailForm = container.find("#email-capture-form");
     var signupForm = container.find("#signup-form");
 
-    // If user is logged in or already registered, proceed directly
-    if (userStatus && (userStatus.logged_in || userStatus.is_registered)) {
+    // If user is logged in or registered, proceed directly
+    if (
+      userStatus &&
+      (userStatus.type === "logged_in" || userStatus.type === "registered")
+    ) {
       startFactCheck(container);
       return;
     }
 
-    // If user has email but exceeded limit, show signup form
-    if (userStatus && userStatus.email && !userStatus.can_use) {
+    // If user has exceeded limit, show signup form
+    if (
+      userStatus &&
+      userStatus.type === "free" &&
+      userStatus.remaining === 0
+    ) {
       emailForm.hide();
       signupForm.show();
       return;
     }
 
     // If user has email and can still use, proceed directly
-    if (userStatus && userStatus.email && userStatus.can_use) {
+    if (userStatus && userStatus.type === "free" && userStatus.remaining > 0) {
       startFactCheck(container);
       return;
     }
@@ -300,11 +311,12 @@ jQuery(document).ready(function ($) {
     // Otherwise, show email capture form
     signupForm.hide();
     emailForm.show();
-  }
+  };
 
   function startFactCheck(container) {
     var button = container.find(".check-button");
     var resultsContainer = container.find("#fact-check-results");
+    var progressContainer = container.find("#fact-check-progress");
     var postId = container.data("post-id");
     var emailForm = container.find("#email-capture-form");
     var signupForm = container.find("#signup-form");
@@ -334,17 +346,19 @@ jQuery(document).ready(function ($) {
 
     // Show loading state
     button.addClass("loading");
-    button.html(
-      '<div class="loading-spinner"></div><span>Analyzing & Searching...</span>'
-    );
+    button.html('<div class="loading-spinner"></div><span>Starting...</span>');
     resultsContainer.hide();
+
+    // Show progress container
+    progressContainer.show();
+    resetProgress(progressContainer);
 
     // Cancel any existing request for this post
     if (activeRequests[postId]) {
       activeRequests[postId].abort();
     }
 
-    // Make AJAX request
+    // Make AJAX request to start background processing
     activeRequests[postId] = $.ajax({
       url: factChecker.ajaxUrl,
       type: "POST",
@@ -353,18 +367,16 @@ jQuery(document).ready(function ($) {
         post_id: postId,
         nonce: factChecker.nonce,
       },
-      timeout: 180000, // 3 minutes timeout for comprehensive web search
       success: function (response) {
-        if (response.success) {
-          // Cache the results for this specific post
-          factCheckCache[postId] = response.data;
-          displayResults(response.data, resultsContainer);
-          resultsContainer.show();
+        if (response.success && response.data.task_id) {
+          // Start polling for progress
+          pollProgress(postId, response.data.task_id, container);
         } else {
           showError(
-            response.data || "Analysis failed. Please try again.",
+            response.data || "Failed to start analysis. Please try again.",
             resultsContainer
           );
+          progressContainer.hide();
         }
       },
       error: function (xhr, status, error) {
@@ -372,26 +384,157 @@ jQuery(document).ready(function ($) {
           return; // Request was cancelled
         }
 
-        var errorMessage = "Analysis failed. Please try again.";
-        if (status === "timeout") {
-          errorMessage =
-            "Analysis timed out. The web search may have taken too long. Please try again.";
-        } else if (xhr.responseJSON && xhr.responseJSON.data) {
+        var errorMessage = "Failed to start analysis. Please try again.";
+        if (xhr.responseJSON && xhr.responseJSON.data) {
           errorMessage = xhr.responseJSON.data;
         }
         showError(errorMessage, resultsContainer);
+        progressContainer.hide();
       },
       complete: function () {
-        // Reset button state
-        button.removeClass("loading");
-        button.html(
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg><span>Re-check</span>'
-        );
-
         // Clear active request
         delete activeRequests[postId];
       },
     });
+  }
+
+  function resetProgress(progressContainer) {
+    progressContainer.find(".progress-fill").css("width", "0%");
+    progressContainer.find(".progress-percentage").text("0%");
+    progressContainer.find(".progress-title-text").text("Starting...");
+    progressContainer
+      .find(".progress-step")
+      .removeClass("active complete error");
+    progressContainer.find(".step-status").text("Waiting...");
+  }
+
+  function pollProgress(postId, taskId, container) {
+    var button = container.find(".check-button");
+    var resultsContainer = container.find("#fact-check-results");
+    var progressContainer = container.find("#fact-check-progress");
+
+    // Clear any existing poller
+    if (progressPollers[postId]) {
+      clearInterval(progressPollers[postId]);
+    }
+
+    // Poll every 2 seconds
+    progressPollers[postId] = setInterval(function () {
+      $.ajax({
+        url: factChecker.ajaxUrl,
+        type: "POST",
+        data: {
+          action: "facty_check_progress",
+          task_id: taskId,
+          nonce: factChecker.nonce,
+        },
+        success: function (response) {
+          if (response.success && response.data) {
+            updateProgress(progressContainer, response.data);
+
+            // Check if complete
+            if (response.data.status === "complete") {
+              clearInterval(progressPollers[postId]);
+              delete progressPollers[postId];
+
+              // Display results
+              if (response.data.result) {
+                factCheckCache[postId] = response.data.result;
+                displayResults(response.data.result, resultsContainer);
+                resultsContainer.show();
+                progressContainer.fadeOut();
+              }
+
+              // Reset button
+              button.removeClass("loading");
+              button.html(
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg><span>Re-check</span>'
+              );
+            } else if (response.data.status === "error") {
+              clearInterval(progressPollers[postId]);
+              delete progressPollers[postId];
+
+              showError(
+                response.data.error || "Analysis failed. Please try again.",
+                resultsContainer
+              );
+              progressContainer.hide();
+
+              // Reset button
+              button.removeClass("loading");
+              button.html(
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg><span>Retry</span>'
+              );
+            }
+          }
+        },
+        error: function () {
+          // Continue polling even on error
+          console.log("Progress poll error, will retry...");
+        },
+      });
+    }, 2000); // Poll every 2 seconds
+
+    // Safety timeout: stop polling after 10 minutes
+    setTimeout(function () {
+      if (progressPollers[postId]) {
+        clearInterval(progressPollers[postId]);
+        delete progressPollers[postId];
+        showError("Analysis timed out. Please try again.", resultsContainer);
+        progressContainer.hide();
+        button.removeClass("loading");
+        button.html(
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg><span>Retry</span>'
+        );
+      }
+    }, 600000); // 10 minutes
+  }
+
+  function updateProgress(progressContainer, data) {
+    var progress = data.progress || 0;
+    var step = data.step || "initializing";
+    var stepDetail = data.step_detail || "Processing...";
+
+    // Update progress bar
+    progressContainer.find(".progress-fill").css("width", progress + "%");
+    progressContainer
+      .find(".progress-percentage")
+      .text(Math.round(progress) + "%");
+    progressContainer.find(".progress-title-text").text(stepDetail);
+
+    // Update step indicators
+    progressContainer
+      .find(".progress-step")
+      .removeClass("active complete error");
+
+    if (step === "extracting" || progress < 30) {
+      progressContainer.find('[data-step="extracting"]').addClass("active");
+      progressContainer
+        .find('[data-step="extracting"] .step-status')
+        .text(stepDetail);
+    } else if (step === "verifying" || (progress >= 30 && progress < 85)) {
+      progressContainer.find('[data-step="extracting"]').addClass("complete");
+      progressContainer.find('[data-step="verifying"]').addClass("active");
+      progressContainer
+        .find('[data-step="verifying"] .step-status')
+        .text(stepDetail);
+    } else if (step === "generating" || progress >= 85) {
+      progressContainer.find('[data-step="extracting"]').addClass("complete");
+      progressContainer.find('[data-step="verifying"]').addClass("complete");
+      progressContainer.find('[data-step="generating"]').addClass("active");
+      progressContainer
+        .find('[data-step="generating"] .step-status')
+        .text(stepDetail);
+    }
+
+    if (step === "complete" || progress === 100) {
+      progressContainer.find(".progress-step").addClass("complete");
+      progressContainer.find(".progress-title-text").text("Complete!");
+    }
+
+    if (data.status === "error") {
+      progressContainer.find(".progress-step.active").addClass("error");
+    }
   }
 
   // Helper functions
@@ -447,199 +590,124 @@ jQuery(document).ready(function ($) {
 
     if (data.score < 50) {
       statusClass = "status-error";
-      statusText = "⚠ Issues Found";
-      scoreColor = "#dc2626";
-    } else if (data.score < 80) {
+      statusText = "✗ Concerns Found";
+      scoreColor = "#ef4444";
+    } else if (data.score < 75) {
       statusClass = "status-warning";
-      statusText = "⚠ Needs Review";
-      scoreColor = "#d97706";
+      statusText = "⚠ Review Needed";
+      scoreColor = "var(--fc-warning, #f59e0b)";
     }
 
-    var issuesHtml = "";
-    if (data.issues && data.issues.length > 0) {
-      issuesHtml =
-        '<div class="issues-section">' +
-        '<h4 class="issues-title">' +
-        '<svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="2">' +
-        '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>' +
-        '<line x1="12" y1="9" x2="12" y2="13"></line>' +
-        '<line x1="12" y1="17" x2="12.01" y2="17"></line>' +
-        "</svg>" +
-        "Issues Found (" +
-        data.issues.length +
-        ")" +
-        "</h4>";
-
-      for (var i = 0; i < data.issues.length; i++) {
-        var issue = data.issues[i];
-        issuesHtml +=
-          '<div class="issue-item">' +
-          '<div class="issue-type">' +
-          escapeHtml(issue.type) +
-          "</div>" +
-          '<div class="issue-description">' +
-          escapeHtml(issue.description) +
-          "</div>" +
-          '<div class="issue-suggestion">' +
-          "<strong>Suggested:</strong> " +
-          escapeHtml(issue.suggestion) +
-          "</div>" +
-          "</div>";
-      }
-
-      issuesHtml += "</div>";
-    }
-
-    var sourcesHtml = "";
-    if (data.sources && data.sources.length > 0) {
-      // Filter out any invalid URLs
-      var validSources = [];
-      for (var j = 0; j < data.sources.length; j++) {
-        var source = data.sources[j];
-        if (
-          source &&
-          source.url &&
-          source.title &&
-          (source.url.indexOf("http://") === 0 ||
-            source.url.indexOf("https://") === 0)
-        ) {
-          validSources.push(source);
-        }
-      }
-
-      if (validSources.length > 0) {
-        sourcesHtml =
-          '<div class="sources-section">' +
-          '<h4 class="sources-title">Sources Verified</h4>';
-
-        for (var k = 0; k < Math.min(validSources.length, 8); k++) {
-          var validSource = validSources[k];
-          sourcesHtml +=
-            '<a href="' +
-            escapeHtml(validSource.url) +
-            '" class="source-link" target="_blank" rel="noopener noreferrer">' +
-            escapeHtml(truncateTitle(validSource.title, 80)) +
-            "</a>";
-        }
-
-        sourcesHtml += "</div>";
-      }
-    }
-
-    // --- START: NEW CODE FOR CTA BUTTONS ---
-    var currentArticleUrl = window.location.href;
-    var detailedAnalysisUrl = `https://sawahsolutions.com/dis/search/?prefill_url=${encodeURIComponent(
-      currentArticleUrl
-    )}`;
-
-    var ctaButtonsHtml =
-      '<div class="fact-check-cta-buttons">' +
-      '<a href="' +
-      detailedAnalysisUrl +
-      '" class="cta-button cta-primary" target="_blank">Get Detailed Analysis</a>' +
-      '<a href="https://webmon.disinformationcommission.com/" class="cta-button cta-secondary" target="_blank">Web Monitor</a>' +
-      '<a href="https://disinformationcommission.com/tools" class="cta-button cta-secondary" target="_blank">More Tools</a>' +
-      "</div>";
-    // --- END: NEW CODE FOR CTA BUTTONS ---
-
-    var html =
-      '<div class="score-section">' +
-      '<div class="score-display">' +
+    var html = '<div class="score-section">';
+    html += '<div class="score-display">';
+    html +=
       '<div class="score-number" style="color: ' +
       scoreColor +
       ';">' +
       data.score +
-      "</div>" +
-      '<div class="score-label">Score</div>' +
-      "</div>" +
-      '<div class="score-description">' +
-      '<div class="score-title">' +
-      escapeHtml(data.status || "Analysis Complete") +
-      '<span class="status-indicator ' +
+      "</div>";
+    html += '<div class="score-label">Score</div>';
+    html += "</div>";
+    html += '<div class="score-description">';
+    html +=
+      '<div class="score-title ' +
       statusClass +
       '">' +
       statusText +
-      "</span>" +
-      "</div>" +
+      ' <span style="font-weight: 400; opacity: 0.7;">' +
+      (data.status || "") +
+      "</span></div>";
+    html +=
       '<div class="score-subtitle">' +
-      escapeHtml(
-        data.description || "Web search and fact-checking analysis completed."
-      ) +
-      "</div>" +
-      "</div>" +
-      "</div>" +
-      issuesHtml +
-      sourcesHtml +
-      ctaButtonsHtml + // <-- THE FIX IS HERE
-      '<div class="voicing-info">' +
-      "<span>Powered by The Disinformation Commission • " +
-      (data.sources ? data.sources.length : 0) +
-      " sources verified</span>" +
-      '<div class="voice-controls">' +
-      "<span>0:00</span>" +
-      '<div class="progress-bar">' +
-      '<div class="progress-fill"></div>' +
-      "</div>" +
-      '<button class="voice-control" title="Download Report" onclick="downloadReport()">' +
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-      '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>' +
-      '<polyline points="7,10 12,15 17,10"></polyline>' +
-      '<line x1="12" y1="15" x2="12" y2="3"></line>' +
-      "</svg>" +
-      "</button>" +
-      '<button class="voice-control" title="Share Results" onclick="shareResults()">' +
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-      '<circle cx="18" cy="5" r="3"></circle>' +
-      '<circle cx="6" cy="12" r="3"></circle>' +
-      '<circle cx="18" cy="19" r="3"></circle>' +
-      '<line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>' +
-      '<line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>' +
-      "</svg>" +
-      "</button>" +
-      "</div>" +
-      "</div>" +
-      '<div class="fact-check-timestamp">' +
-      "Last verified: " +
-      timeString +
+      escapeHtml(data.description || "") +
       "</div>";
+    html += "</div>";
+    html += "</div>";
+
+    // Issues section
+    if (data.issues && data.issues.length > 0) {
+      html += '<div class="issues-section">';
+      html +=
+        '<div class="issues-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>Issues Found (' +
+        data.issues.length +
+        ")</div>";
+      data.issues.forEach(function (issue) {
+        html += '<div class="issue-item">';
+        html +=
+          '<div class="issue-type">' +
+          escapeHtml(issue.type || "Issue") +
+          "</div>";
+        html +=
+          '<div class="issue-description">' +
+          escapeHtml(issue.description || "") +
+          "</div>";
+        if (issue.suggestion) {
+          html +=
+            '<div class="issue-suggestion"><strong>Suggestion:</strong> ' +
+            escapeHtml(issue.suggestion) +
+            "</div>";
+        }
+        html += "</div>";
+      });
+      html += "</div>";
+    }
+
+    // Sources section
+    if (data.sources && data.sources.length > 0) {
+      html += '<div class="sources-section">';
+      html +=
+        '<div class="sources-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>Sources Verified (' +
+        data.sources.length +
+        ")</div>";
+      html += '<div class="sources-list">';
+      data.sources.forEach(function (source) {
+        html +=
+          '<div class="source-item"><a href="' +
+          escapeHtml(source.url || "#") +
+          '" target="_blank" rel="nofollow" class="source-link">' +
+          escapeHtml(source.title || source.url || "Source") +
+          "</a></div>";
+      });
+      html += "</div>";
+      html += "</div>";
+    }
+
+    // Metadata footer
+    html += '<div class="fact-check-cta-buttons">';
+    html +=
+      '<button class="cta-button cta-secondary" onclick="downloadReport()">📥 Download Report</button>';
+    html +=
+      '<button class="cta-button cta-secondary" onclick="shareResults()">📤 Share Results</button>';
+    html += "</div>";
+
+    html += '<div class="voicing-info">';
+    html += '<small style="color: #94a3b8;">Analyzed: ' + timeString;
+    if (data.mode) {
+      var modeLabel =
+        data.mode === "firecrawl" ? "Deep Research Mode" : "Quick Check Mode";
+      html += " • " + modeLabel;
+    }
+    html += "</small>";
+    html += "</div>";
 
     container.html(html);
   }
 
   function showError(message, container) {
-    var html =
-      '<div class="score-section" style="border-color: #f87171;">' +
-      '<div class="score-display">' +
-      '<div class="score-number" style="color: #dc2626;">--</div>' +
-      '<div class="score-label">Error</div>' +
-      "</div>" +
-      '<div class="score-description">' +
-      '<div class="score-title">' +
-      "Analysis Failed" +
-      '<span class="status-indicator status-error">✗ Error</span>' +
-      "</div>" +
-      '<div class="score-subtitle">' +
-      escapeHtml(message) +
-      "</div>" +
-      "</div>" +
-      "</div>" +
-      '<div class="voicing-info">' +
-      "<span>Web search and analysis could not be completed</span>" +
-      '<div class="voice-controls">' +
-      '<button class="voice-control" title="Retry" onclick="factCheckerStart()">' +
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-      '<polyline points="23,4 23,10 17,10"></polyline>' +
-      '<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>' +
-      "</svg>" +
-      "</button>" +
-      "</div>" +
-      "</div>";
-
-    container.html(html).show();
+    container.html(
+      '<div class="error-section">' +
+        '<div class="error-icon">⚠</div>' +
+        '<div class="error-title">Analysis Failed</div>' +
+        '<div class="error-message">' +
+        escapeHtml(message) +
+        "</div>" +
+        "</div>"
+    );
+    container.show();
   }
 
   function escapeHtml(text) {
-    if (typeof text !== "string") return "";
+    if (!text) return "";
     var map = {
       "&": "&amp;",
       "<": "&lt;",
@@ -650,11 +718,6 @@ jQuery(document).ready(function ($) {
     return text.replace(/[&<>"']/g, function (m) {
       return map[m];
     });
-  }
-
-  function truncateTitle(title, maxLength) {
-    if (title.length <= maxLength) return title;
-    return title.substring(0, maxLength - 3) + "...";
   }
 
   // Download report functionality
@@ -725,8 +788,11 @@ jQuery(document).ready(function ($) {
     reportContent +=
       "All sources listed above were accessed during the verification process.\n\n";
 
-    reportContent += "Generated by Facty Plugin\n";
-    reportContent += "Powered by OpenRouter Web Search\n";
+    var pluginTitle =
+      typeof factChecker !== "undefined" && factChecker.plugin_title
+        ? factChecker.plugin_title
+        : "Facty";
+    reportContent += "Generated by " + pluginTitle + " Plugin\n";
     reportContent += "Plugin by Mohamed Sawah - https://sawahsolutions.com";
 
     // Create and download file
@@ -841,27 +907,6 @@ jQuery(document).ready(function ($) {
       .substring(0, 50); // Limit length
   }
 
-  // Progress bar animation (cosmetic)
-  function animateProgressBar() {
-    var progressBar = $(".progress-fill");
-    if (progressBar.length) {
-      var width = 0;
-      var interval = setInterval(function () {
-        width += Math.random() * 10;
-        if (width >= 100) {
-          width = 100;
-          clearInterval(interval);
-        }
-        progressBar.css("width", width + "%");
-      }, 200);
-    }
-  }
-
-  // Initialize progress bar animation when results are shown
-  $(document).on("DOMNodeInserted", ".results-container", function () {
-    setTimeout(animateProgressBar, 500);
-  });
-
   // Keyboard accessibility
   $(document).on("keydown", ".fact-check-container", function (e) {
     if (e.key === "Enter" || e.key === " ") {
@@ -880,33 +925,9 @@ jQuery(document).ready(function ($) {
         activeRequests[postId].abort();
       }
     }
-  });
-
-  // Auto-retry mechanism for failed requests
-  var retryCount = 0;
-  var maxRetries = 2;
-
-  function autoRetryFactCheck() {
-    if (retryCount < maxRetries) {
-      retryCount++;
-      setTimeout(function () {
-        console.log("Auto-retrying fact check, attempt:", retryCount);
-        factCheckerStart();
-      }, 3000);
-    }
-  }
-
-  // Enhanced error handling with auto-retry
-  $(document).ajaxError(function (event, xhr, settings) {
-    if (
-      settings.data &&
-      typeof settings.data === "string" &&
-      settings.data.indexOf("facty_check_article") > -1
-    ) {
-      if (xhr.status === 0 || xhr.status >= 500) {
-        // Network error or server error - try again
-        autoRetryFactCheck();
-      }
+    // Stop all progress pollers
+    for (var postId in progressPollers) {
+      clearInterval(progressPollers[postId]);
     }
   });
 });
