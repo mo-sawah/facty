@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Facty
  * Description: AI-powered fact-checking plugin that verifies article accuracy using OpenRouter with web search or Firecrawl for deep multi-step research
- * Version: 4.6.7
+ * Version: 4.7.0
  * Author: Mohamed Sawah
  * Author URI: https://sawahsolutions.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('FACTY_VERSION', '4.6.7');
+define('FACTY_VERSION', '4.7.0');
 define('FACTY_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('FACTY_PLUGIN_PATH', plugin_dir_path(__FILE__));
 
@@ -29,6 +29,7 @@ require_once FACTY_PLUGIN_PATH . 'includes/class-facty-admin.php';
 require_once FACTY_PLUGIN_PATH . 'includes/class-facty-core.php';
 require_once FACTY_PLUGIN_PATH . 'includes/class-facty-jina-analyzer.php';
 require_once FACTY_PLUGIN_PATH . 'includes/class-facty-perplexity-analyzer.php';
+require_once FACTY_PLUGIN_PATH . 'includes/class-facty-perplexity-multistep-analyzer.php';
 
 // Initialize the plugin
 function facty_init() {

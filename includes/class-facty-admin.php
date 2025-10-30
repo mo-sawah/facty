@@ -522,13 +522,15 @@ class Facty_Admin {
         ?>
         <select name="facty_options[fact_check_mode]" class="regular-text">
             <option value="openrouter" <?php selected($mode, 'openrouter'); ?>>OpenRouter (Quick Check - 60-90s)</option>
-            <option value="perplexity" <?php selected($mode, 'perplexity'); ?>>Perplexity Sonar (Ultra-Fast - 20-40s) ⚡ NEW!</option>
+            <option value="perplexity" <?php selected($mode, 'perplexity'); ?>>Perplexity Sonar (Ultra-Fast - 20-40s) ⚡</option>
+            <option value="perplexity_multistep" <?php selected($mode, 'perplexity_multistep'); ?>>Perplexity Multi-Step (Highest Accuracy - 60-120s) 🎯 NEW!</option>
             <option value="jina" <?php selected($mode, 'jina'); ?>>Jina DeepSearch (Ultra-Fast - 30-45s)</option>
             <option value="firecrawl" <?php selected($mode, 'firecrawl'); ?>>Firecrawl (Deep Research - 2-3min)</option>
         </select>
         <p class="description">
             <strong>OpenRouter:</strong> Balanced speed and accuracy using AI + web search<br>
-            <strong>Perplexity Sonar:</strong> Lightning-fast with real-time web search - Best for speed & accuracy! ⚡<br>
+            <strong>Perplexity Sonar:</strong> Lightning-fast with real-time web search - Best for speed! ⚡<br>
+            <strong>Perplexity Multi-Step:</strong> Highest accuracy with separate verification per claim - Best for accuracy! 🎯<br>
             <strong>Jina DeepSearch:</strong> Ultra-fast AI-powered search, read & reason fact-checking<br>
             <strong>Firecrawl:</strong> Most thorough research with deep source analysis
         </p>

@@ -178,6 +178,10 @@ class Facty_AJAX {
                 require_once FACTY_PLUGIN_PATH . 'includes/class-facty-perplexity-analyzer.php';
                 $analyzer = new Facty_Perplexity_Analyzer($options);
                 $result = $analyzer->analyze($content, $task_id);
+            } elseif ($mode === 'perplexity_multistep' && !empty($options['perplexity_api_key'])) {
+                require_once FACTY_PLUGIN_PATH . 'includes/class-facty-perplexity-multistep-analyzer.php';
+                $analyzer = new Facty_Perplexity_MultiStep_Analyzer($options);
+                $result = $analyzer->analyze($content, $task_id);
             } elseif ($mode === 'jina' && !empty($options['jina_api_key'])) {
                 require_once FACTY_PLUGIN_PATH . 'includes/class-facty-jina-analyzer.php';
                 $analyzer = new Facty_Jina_Analyzer($options);
@@ -243,6 +247,10 @@ class Facty_AJAX {
             if ($mode === 'perplexity' && !empty($options['perplexity_api_key'])) {
                 require_once FACTY_PLUGIN_PATH . 'includes/class-facty-perplexity-analyzer.php';
                 $analyzer = new Facty_Perplexity_Analyzer($options);
+                $result = $analyzer->analyze($content, $task_id);
+            } elseif ($mode === 'perplexity_multistep' && !empty($options['perplexity_api_key'])) {
+                require_once FACTY_PLUGIN_PATH . 'includes/class-facty-perplexity-multistep-analyzer.php';
+                $analyzer = new Facty_Perplexity_MultiStep_Analyzer($options);
                 $result = $analyzer->analyze($content, $task_id);
             } elseif ($mode === 'jina' && !empty($options['jina_api_key'])) {
                 require_once FACTY_PLUGIN_PATH . 'includes/class-facty-jina-analyzer.php';

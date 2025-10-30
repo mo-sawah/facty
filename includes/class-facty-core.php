@@ -146,6 +146,8 @@ class Facty_Core {
         $mode_label = 'OpenRouter Web Search';
         if ($this->options['fact_check_mode'] === 'perplexity') {
             $mode_label = 'Deep Research';
+        } elseif ($this->options['fact_check_mode'] === 'perplexity_multistep') {
+            $mode_label = 'Multi-Step Deep Research';
         } elseif ($this->options['fact_check_mode'] === 'firecrawl') {
             $mode_label = 'Crawler Deep Research';
         } elseif ($this->options['fact_check_mode'] === 'jina') {
