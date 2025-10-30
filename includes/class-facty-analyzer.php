@@ -277,6 +277,6 @@ Remember: You're checking facts as of {$current_date}. Information changes over 
             'progress' => $percentage,
             'stage' => $stage,
             'message' => $message
-        ), 300); // 5 minutes
+        ), 600); // 10 minutes
     }
 }

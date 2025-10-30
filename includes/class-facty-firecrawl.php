@@ -155,65 +155,116 @@ Return ONLY valid JSON (no markdown):
         $search_query = $claim['search_query'];
         $searches_per_claim = intval($this->options['firecrawl_searches_per_claim']);
         
-        // Search and scrape with Firecrawl
-        $response = wp_remote_post('https://api.firecrawl.dev/v2/search', array(
-            'headers' => array(
-                'Authorization' => 'Bearer ' . $api_key,
-                'Content-Type' => 'application/json'
-            ),
-            'body' => json_encode(array(
-                'query' => $search_query,
-                'limit' => $searches_per_claim,
-                'scrapeOptions' => array(
-                    'formats' => array('markdown')
+        try {
+            // Search and scrape with Firecrawl
+            $response = wp_remote_post('https://api.firecrawl.dev/v2/search', array(
+                'headers' => array(
+                    'Authorization' => 'Bearer ' . $api_key,
+                    'Content-Type' => 'application/json'
                 ),
-                'tbs' => 'qdr:m' // Past month for recent info
-            )),
-            'timeout' => 45
-        ));
-        
-        if (is_wp_error($response)) {
+                'body' => json_encode(array(
+                    'query' => $search_query,
+                    'limit' => $searches_per_claim,
+                    'scrapeOptions' => array(
+                        'formats' => array('markdown')
+                    ),
+                    'tbs' => 'qdr:m' // Past month for recent info
+                )),
+                'timeout' => 60, // Increased timeout
+                'httpversion' => '1.1'
+            ));
+            
+            if (is_wp_error($response)) {
+                error_log('Facty Firecrawl Error: ' . $response->get_error_message());
+                return array(
+                    'claim' => $claim['claim'],
+                    'status' => 'error',
+                    'message' => 'Search failed: ' . $response->get_error_message(),
+                    'sources' => array()
+                );
+            }
+            
+            $http_code = wp_remote_retrieve_response_code($response);
+            if ($http_code !== 200) {
+                $body = wp_remote_retrieve_body($response);
+                error_log('Facty Firecrawl HTTP Error: ' . $http_code . ' - ' . $body);
+                return array(
+                    'claim' => $claim['claim'],
+                    'status' => 'error',
+                    'message' => 'API error (HTTP ' . $http_code . ')',
+                    'sources' => array()
+                );
+            }
+            
+            $body = wp_remote_retrieve_body($response);
+            $data = json_decode($body, true);
+            
+            if (!$data) {
+                error_log('Facty Firecrawl JSON Error: Invalid JSON response');
+                return array(
+                    'claim' => $claim['claim'],
+                    'status' => 'error',
+                    'message' => 'Invalid API response',
+                    'sources' => array()
+                );
+            }
+            
+            $sources = array();
+            $scraped_content = '';
+            
+            if (isset($data['success']) && $data['success'] && isset($data['data'])) {
+                // Handle both 'web' and direct array responses
+                $results = isset($data['data']['web']) ? $data['data']['web'] : (isset($data['data']) ? $data['data'] : array());
+                
+                foreach ($results as $result) {
+                    $sources[] = array(
+                        'title' => isset($result['title']) ? $result['title'] : 'Source',
+                        'url' => isset($result['url']) ? $result['url'] : '',
+                        'credibility' => 'medium'
+                    );
+                    
+                    // Collect scraped content for verification (TRUNCATE to avoid AI overload)
+                    if (isset($result['markdown'])) {
+                        // Limit each source to 500 characters
+                        $scraped_content .= substr($result['markdown'], 0, 500) . "\n\n";
+                    }
+                }
+            }
+            
+            // If no content found, return without verification
+            if (empty($scraped_content)) {
+                return array(
+                    'claim' => $claim['claim'],
+                    'importance' => $claim['importance'],
+                    'verification' => array(
+                        'is_accurate' => false,
+                        'confidence' => 'low',
+                        'explanation' => 'No sources found for verification',
+                        'correction' => ''
+                    ),
+                    'sources' => $sources
+                );
+            }
+            
+            // Verify claim against scraped content (with truncated data)
+            $verification = $this->verify_against_sources($claim['claim'], $scraped_content);
+            
+            return array(
+                'claim' => $claim['claim'],
+                'importance' => $claim['importance'],
+                'verification' => $verification,
+                'sources' => $sources
+            );
+            
+        } catch (Exception $e) {
+            error_log('Facty Firecrawl Exception: ' . $e->getMessage());
             return array(
                 'claim' => $claim['claim'],
                 'status' => 'error',
-                'message' => 'Search failed',
+                'message' => 'Error: ' . $e->getMessage(),
                 'sources' => array()
             );
         }
-        
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
-        
-        $sources = array();
-        $scraped_content = '';
-        
-        if (isset($data['success']) && $data['success'] && isset($data['data'])) {
-            // Handle both 'web' and direct array responses
-            $results = isset($data['data']['web']) ? $data['data']['web'] : (isset($data['data']) ? $data['data'] : array());
-            
-            foreach ($results as $result) {
-                $sources[] = array(
-                    'title' => isset($result['title']) ? $result['title'] : 'Source',
-                    'url' => isset($result['url']) ? $result['url'] : '',
-                    'credibility' => 'medium'
-                );
-                
-                // Collect scraped content for verification
-                if (isset($result['markdown'])) {
-                    $scraped_content .= substr($result['markdown'], 0, 800) . "\n\n";
-                }
-            }
-        }
-        
-        // Verify claim against scraped content
-        $verification = $this->verify_against_sources($claim['claim'], $scraped_content);
-        
-        return array(
-            'claim' => $claim['claim'],
-            'importance' => $claim['importance'],
-            'verification' => $verification,
-            'sources' => $sources
-        );
     }
     
     /**
@@ -396,6 +447,6 @@ Generate a detailed report in ONLY valid JSON (no markdown):
             'progress' => $percentage,
             'stage' => $stage,
             'message' => $message
-        ), 300); // 5 minutes
+        ), 600); // 10 minutes
     }
 }

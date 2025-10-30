@@ -29,10 +29,13 @@ class Facty_AJAX {
         add_action('wp_ajax_nopriv_facty_signup', array($this, 'signup'));
         
         add_action('wp_ajax_test_facty_api', array($this, 'test_api'));
+        
+        // Register background processing hook
+        add_action('facty_process_background', array($this, 'process_background_task'));
     }
     
     /**
-     * Start fact check with background processing
+     * Start fact check with TRUE background processing
      */
     public function start_fact_check() {
         check_ajax_referer('facty_nonce', 'nonce');
@@ -67,12 +70,27 @@ class Facty_AJAX {
             'progress' => 5,
             'stage' => 'starting',
             'message' => 'Starting fact check...'
-        ), 300); // 5 minutes
+        ), 600); // 10 minutes
         
-        // Start background processing
-        $this->process_fact_check_background($task_id, $post_id);
+        // Store data for background processing
+        set_transient('facty_bg_' . $task_id, array(
+            'post_id' => $post_id,
+            'options' => $this->options,
+            'user_status' => $user_status
+        ), 600);
         
-        // Return task ID to frontend
+        // Schedule background processing using WordPress cron
+        $scheduled = wp_schedule_single_event(time(), 'facty_process_background', array($task_id));
+        
+        // Force spawn cron (helps with some hosting setups)
+        if (function_exists('spawn_cron')) {
+            spawn_cron();
+        }
+        
+        // Log for debugging
+        error_log('Facty: Task scheduled - ' . $task_id . ' - Scheduled: ' . ($scheduled ? 'yes' : 'no'));
+        
+        // Return task ID immediately to frontend
         wp_send_json_success(array(
             'task_id' => $task_id,
             'message' => 'Fact check started'
@@ -80,11 +98,48 @@ class Facty_AJAX {
     }
     
     /**
+     * Process background task (called by WordPress cron)
+     */
+    public function process_background_task($task_id) {
+        error_log('Facty: Background task starting - ' . $task_id);
+        
+        // Get stored data
+        $data = get_transient('facty_bg_' . $task_id);
+        
+        if (!$data) {
+            error_log('Facty: Background task data not found for ' . $task_id);
+            set_transient($task_id, array(
+                'status' => 'error',
+                'progress' => 0,
+                'message' => 'Task data expired. Please try again.'
+            ), 600);
+            return;
+        }
+        
+        error_log('Facty: Processing fact check for post ' . $data['post_id']);
+        
+        // Delete the transient
+        delete_transient('facty_bg_' . $task_id);
+        
+        // Process the fact check
+        $this->process_fact_check_background($task_id, $data['post_id'], $data['options'], $data['user_status']);
+        
+        error_log('Facty: Background task completed - ' . $task_id);
+    }
+    
+    /**
      * Background processing function
      */
-    private function process_fact_check_background($task_id, $post_id) {
+    private function process_fact_check_background($task_id, $post_id, $options = null, $user_status = null) {
+        // Use passed options or fallback to instance options
+        $options = $options ? $options : $this->options;
+        
         try {
             $post = get_post($post_id);
+            
+            if (!$post) {
+                throw new Exception('Post not found');
+            }
             
             $this->update_progress($task_id, 10, 'extracting', 'Reading article content...');
             
@@ -97,7 +152,7 @@ class Facty_AJAX {
             }
             
             // Check cache first
-            $mode = $this->options['fact_check_mode'];
+            $mode = $options['fact_check_mode'];
             $cached_result = Facty_Cache::get($post_id, $post->post_content, $mode);
             
             if ($cached_result) {
@@ -106,40 +161,47 @@ class Facty_AJAX {
                     'status' => 'complete',
                     'progress' => 100,
                     'result' => $cached_result
-                ), 300);
+                ), 600);
                 return;
             }
             
             // Analyze content based on mode
-            if ($mode === 'firecrawl' && !empty($this->options['firecrawl_api_key'])) {
-                $analyzer = new Facty_Firecrawl($this->options);
+            if ($mode === 'firecrawl' && !empty($options['firecrawl_api_key'])) {
+                $analyzer = new Facty_Firecrawl($options);
                 $result = $analyzer->analyze($content, $task_id);
             } else {
-                $analyzer = new Facty_Analyzer($this->options);
+                $analyzer = new Facty_Analyzer($options);
                 $result = $analyzer->analyze($content, $task_id);
             }
             
             // Cache the result
             Facty_Cache::set($post_id, $post->post_content, $mode, $result);
             
-            // Update usage count
-            $user_status = Facty_Users::get_status($this->options);
-            Facty_Users::increment_usage($user_status);
+            // Update usage count if user status provided
+            if ($user_status) {
+                Facty_Users::increment_usage($user_status);
+            } else {
+                $user_status = Facty_Users::get_status($options);
+                Facty_Users::increment_usage($user_status);
+            }
             
             $this->update_progress($task_id, 100, 'complete', 'Fact check complete!');
             set_transient($task_id, array(
                 'status' => 'complete',
                 'progress' => 100,
                 'result' => $result
-            ), 300);
+            ), 600);
             
         } catch (Exception $e) {
             error_log('Facty Error: ' . $e->getMessage());
+            error_log('Facty Error Trace: ' . $e->getTraceAsString());
+            
             set_transient($task_id, array(
                 'status' => 'error',
                 'progress' => 0,
-                'message' => $e->getMessage()
-            ), 300);
+                'message' => $e->getMessage(),
+                'error_details' => $e->getTraceAsString()
+            ), 600);
         }
     }
     
@@ -174,9 +236,33 @@ class Facty_AJAX {
         }
         
         if (Facty_Users::save_email($email)) {
-            wp_send_json_success(array('email' => $email));
+            // Set cookie with proper parameters
+            $cookie_set = setcookie(
+                'fact_checker_email', 
+                $email, 
+                time() + (86400 * 365), // 1 year
+                COOKIEPATH,
+                COOKIE_DOMAIN,
+                is_ssl(),
+                true // httponly
+            );
+            
+            // Also set via headers as backup
+            if (!headers_sent()) {
+                header('Set-Cookie: fact_checker_email=' . $email . '; Max-Age=31536000; Path=' . COOKIEPATH . '; SameSite=Lax');
+            }
+            
+            // Get updated user status
+            $user_status = Facty_Users::get_status($this->options);
+            
+            wp_send_json_success(array(
+                'email' => $email,
+                'cookie_set' => $cookie_set,
+                'user_status' => $user_status,
+                'message' => 'Email saved successfully'
+            ));
         } else {
-            wp_send_json_error('Failed to save email');
+            wp_send_json_error('Failed to save email. Please try again.');
         }
     }
     
@@ -277,6 +363,6 @@ class Facty_AJAX {
             'progress' => $percentage,
             'stage' => $stage,
             'message' => $message
-        ), 300);
+        ), 600); // 10 minutes
     }
 }
