@@ -84,22 +84,34 @@ class Facty_Perplexity_Analyzer {
      * Build optimized fact-check prompt for single-call verification
      */
     private function build_fact_check_prompt($content, $current_date) {
+        // Get recency settings
+        $recency_value = isset($this->options['perplexity_search_recency_value']) ? intval($this->options['perplexity_search_recency_value']) : 1;
+        $recency_unit = isset($this->options['perplexity_search_recency_unit']) ? $this->options['perplexity_search_recency_unit'] : 'week';
+        $recency_description = $recency_value . ' ' . $recency_unit . ($recency_value > 1 ? 's' : '');
+        
         return "You are an expert fact-checker analyzing this article to help READERS understand its accuracy. 
 
 **CRITICAL: TODAY'S DATE IS {$current_date}**
 
-You MUST use ONLY real-time web search with sources from the LAST 7 DAYS to verify current facts. If verifying historical facts, cross-reference with multiple recent authoritative sources dated within the last week.
+You have access to sources from the past {$recency_description}. However, you MUST PRIORITIZE THE MOST RECENT sources (ideally last few days) when verifying current information.
+
+**SMART RECENCY RULES:**
+- For current events/office holders: Use sources from the LAST FEW DAYS (not older sources in your time window)
+- For claims about \"current\" or \"now\": Verify with the MOST RECENT sources available
+- For historical facts: You may use older sources within your time window
+- Always prefer sources dated closer to {$current_date} over older ones
+- If a claim references a time period, prioritize sources from that specific time
 
 **YOUR TASK:**
 1. Identify 5-10 key FACTUAL claims (skip opinions/predictions)
-2. Use ONLY real-time web search from the LAST WEEK to verify EACH claim
+2. Use real-time web search - PRIORITIZE MOST RECENT sources for current events
 3. For political/current events: VERIFY the current office holders, dates, and circumstances as of {$current_date}
 4. Assign a PRECISE accuracy score (0-100)
 5. Return structured JSON
 
 **CRITICAL VERIFICATION REQUIREMENTS:**
-- For claims about current office holders (presidents, officials): Verify who holds the position AS OF {$current_date}
-- For recent events: Only accept sources dated within the last 7 days
+- For claims about current office holders (presidents, officials): Verify who holds the position AS OF {$current_date} using RECENT sources
+- For recent events: Prioritize sources from the last few days
 - For dates/timelines: Verify the actual current date is {$current_date}
 - Cross-reference multiple recent sources for accuracy
 - Flag any claims that reference outdated information
@@ -149,7 +161,7 @@ You MUST use ONLY real-time web search with sources from the LAST 7 DAYS to veri
 ```
 
 **CRITICAL RULES:**
-- ONLY use sources dated within the last 7 days for current events
+- ALWAYS prioritize the MOST RECENT sources for current events (even if older sources are available)
 - Verify current office holders as of {$current_date} - DO NOT use outdated information
 - For political claims: Cross-check with multiple recent authoritative sources
 - Unverified ≠ False (if can't verify with recent sources, mark as \"Unverified\")
@@ -157,13 +169,27 @@ You MUST use ONLY real-time web search with sources from the LAST 7 DAYS to veri
 - Be fair: truly accurate articles deserve 90-100
 - Include ONLY the JSON in your response (no markdown formatting)
 - Use YOUR real-time web search to verify current facts
-- Cite credible sources you actually found dated within the last week";
+- Cite credible sources - prioritize those dated closest to {$current_date}";
     }
     
     /**
      * Call Perplexity API with web search enabled
      */
     private function call_perplexity_api($prompt, $model, $api_key) {
+        // Get recency settings from options
+        $recency_value = isset($this->options['perplexity_search_recency_value']) ? intval($this->options['perplexity_search_recency_value']) : 1;
+        $recency_unit = isset($this->options['perplexity_search_recency_unit']) ? $this->options['perplexity_search_recency_unit'] : 'week';
+        
+        // Convert to Perplexity API format (they only accept: hour, day, week, month, year)
+        // If user sets multiple units (e.g., 3 weeks), use the closest single unit
+        $search_filter = $recency_unit;
+        
+        // Build human-readable recency description for system message
+        $recency_description = $recency_value . ' ' . $recency_unit;
+        if ($recency_value > 1) {
+            $recency_description .= 's';
+        }
+        
         $response = wp_remote_post('https://api.perplexity.ai/chat/completions', array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
@@ -174,7 +200,7 @@ You MUST use ONLY real-time web search with sources from the LAST 7 DAYS to veri
                 'messages' => array(
                     array(
                         'role' => 'system',
-                        'content' => 'You are a precise fact-checker that returns only valid JSON. Use your real-time web search to verify claims with sources from the last 7 days only.'
+                        'content' => "You are a precise fact-checker that returns only valid JSON. You have access to sources from the past {$recency_description}. CRITICAL: Always PRIORITIZE the MOST RECENT sources (last few days) when verifying current information. Use older sources only for historical context or when recent sources don't exist."
                     ),
                     array(
                         'role' => 'user',
@@ -184,7 +210,7 @@ You MUST use ONLY real-time web search with sources from the LAST 7 DAYS to veri
                 'temperature' => 0.2,
                 'max_tokens' => 4000,
                 'return_citations' => true,
-                'search_recency_filter' => 'week' // CRITICAL: Changed from 'month' to 'week' for recent sources only
+                'search_recency_filter' => $search_filter
             )),
             'timeout' => 90
         ));

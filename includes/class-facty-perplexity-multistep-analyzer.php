@@ -219,9 +219,15 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
             );
         }
         
+        // Get recency settings
+        $recency_value = isset($this->options['perplexity_search_recency_value']) ? intval($this->options['perplexity_search_recency_value']) : 1;
+        $recency_unit = isset($this->options['perplexity_search_recency_unit']) ? $this->options['perplexity_search_recency_unit'] : 'week';
+        $recency_description = $recency_value . ' ' . $recency_unit . ($recency_value > 1 ? 's' : '');
+        $search_filter = $recency_unit;
+        
         $prompt = "You are fact-checking a SINGLE specific claim. Today is {$current_date}.
 
-**CRITICAL: Use ONLY sources from the LAST 7 DAYS for current events.**
+**SMART RECENCY:** You have access to sources from the past {$recency_description}. ALWAYS PRIORITIZE THE MOST RECENT sources (last few days) for current events. Use older sources only for historical context.
 
 **CLAIM TO VERIFY:**
 \"{$claim}\"
@@ -229,16 +235,17 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
 **CLAIM TYPE:** {$type}
 
 **YOUR TASK:**
-1. Use real-time web search with RECENT sources (last 7 days) to verify this exact claim
-2. For political/current events: Verify current office holders AS OF {$current_date}
-3. Cross-reference at least 2-3 reliable sources
+1. Use real-time web search - PRIORITIZE MOST RECENT sources for current events
+2. For political/current events: Verify current office holders AS OF {$current_date} using RECENT sources
+3. Cross-reference at least 2-3 reliable sources (prefer newer sources)
 4. Determine if the claim is accurate, outdated, misleading, or false
 
 **VERIFICATION CHECKLIST:**
-- If claim mentions current president/officials: Verify who holds position AS OF {$current_date}
+- If claim mentions current president/officials: Verify who holds position AS OF {$current_date} using sources from last few days
 - Check dates and timelines match {$current_date}
 - Look for updates or corrections to the claim
 - Assess if claim needs additional context
+- Prioritize sources dated closer to {$current_date}
 
 **RETURN THIS EXACT JSON:**
 ```json
@@ -261,7 +268,7 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
 }
 ```
 
-**CRITICAL:** Verify current information as of {$current_date}. Return ONLY valid JSON.";
+**CRITICAL:** Verify current information as of {$current_date}. Prioritize MOST RECENT sources. Return ONLY valid JSON.";
 
         $response = wp_remote_post('https://api.perplexity.ai/chat/completions', array(
             'headers' => array(
@@ -273,7 +280,7 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
                 'messages' => array(
                     array(
                         'role' => 'system',
-                        'content' => 'You are a precise fact-checker. Use real-time web search with sources from the last 7 days. Return only valid JSON.'
+                        'content' => "You are a precise fact-checker. You have access to sources from the past {$recency_description}. CRITICAL: Always PRIORITIZE the MOST RECENT sources (last few days) when verifying current information. Return only valid JSON."
                     ),
                     array(
                         'role' => 'user',
@@ -283,7 +290,7 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
                 'temperature' => 0.2,
                 'max_tokens' => 1500,
                 'return_citations' => true,
-                'search_recency_filter' => 'week'
+                'search_recency_filter' => $search_filter
             )),
             'timeout' => 60
         ));

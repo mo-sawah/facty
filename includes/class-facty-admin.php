@@ -194,6 +194,14 @@ class Facty_Admin {
         );
         
         add_settings_field(
+            'perplexity_search_recency',
+            'Search Recency Period',
+            array($this, 'render_perplexity_search_recency_field'),
+            'facty-settings',
+            'facty_api_section'
+        );
+        
+        add_settings_field(
             'firecrawl_settings',
             'Firecrawl Settings',
             array($this, 'render_firecrawl_settings_field'),
@@ -301,6 +309,8 @@ class Facty_Admin {
         $sanitized['perplexity_api_key'] = sanitize_text_field($input['perplexity_api_key']);
         $sanitized['perplexity_model'] = sanitize_text_field($input['perplexity_model']);
         $sanitized['perplexity_multistep_max_claims'] = intval($input['perplexity_multistep_max_claims']);
+        $sanitized['perplexity_search_recency_value'] = intval($input['perplexity_search_recency_value']);
+        $sanitized['perplexity_search_recency_unit'] = sanitize_text_field($input['perplexity_search_recency_unit']);
         $sanitized['firecrawl_searches_per_claim'] = intval($input['firecrawl_searches_per_claim']);
         $sanitized['firecrawl_max_claims'] = intval($input['firecrawl_max_claims']);
         
@@ -649,6 +659,33 @@ class Facty_Admin {
         <p class="description">
             Maximum number of claims to verify when using <strong>Perplexity Multi-Step</strong> mode.<br>
             Each claim requires a separate API call for highest accuracy. More claims = longer processing time but more thorough analysis.
+        </p>
+        <?php
+    }
+    
+    public function render_perplexity_search_recency_field() {
+        $recency_value = isset($this->options['perplexity_search_recency_value']) ? intval($this->options['perplexity_search_recency_value']) : 1;
+        $recency_unit = isset($this->options['perplexity_search_recency_unit']) ? $this->options['perplexity_search_recency_unit'] : 'week';
+        ?>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <input type="number" 
+                   name="facty_options[perplexity_search_recency_value]" 
+                   value="<?php echo esc_attr($recency_value); ?>" 
+                   class="small-text" 
+                   min="1" 
+                   max="10"
+                   style="width: 80px;">
+            <select name="facty_options[perplexity_search_recency_unit]" class="regular-text" style="width: 150px;">
+                <option value="day" <?php selected($recency_unit, 'day'); ?>>Day(s)</option>
+                <option value="week" <?php selected($recency_unit, 'week'); ?>>Week(s)</option>
+                <option value="month" <?php selected($recency_unit, 'month'); ?>>Month(s)</option>
+                <option value="year" <?php selected($recency_unit, 'year'); ?>>Year(s)</option>
+            </select>
+        </div>
+        <p class="description">
+            <strong>Smart Recency:</strong> Sets the search time window for sources (e.g., "1 week" or "3 months").<br>
+            ⚡ <strong>Important:</strong> Even with longer periods, the AI <strong>always prioritizes the most recent sources</strong> and verifies current information (like who is president TODAY).<br>
+            💡 <strong>Recommended:</strong> 1 week for current events, 1-3 months for general fact-checking, 1+ years for historical context.
         </p>
         <?php
     }

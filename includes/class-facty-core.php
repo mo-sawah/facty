@@ -66,6 +66,8 @@ class Facty_Core {
             'perplexity_api_key' => '',
             'perplexity_model' => 'sonar-pro',
             'perplexity_multistep_max_claims' => 10,
+            'perplexity_search_recency_value' => 1,
+            'perplexity_search_recency_unit' => 'week',
             'firecrawl_searches_per_claim' => 3,
             'firecrawl_max_claims' => 10
         );
