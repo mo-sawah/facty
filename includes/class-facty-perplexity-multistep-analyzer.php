@@ -107,9 +107,11 @@ class Facty_Perplexity_MultiStep_Analyzer {
      * STEP 1: Extract factual claims from article
      */
     private function extract_claims($content, $current_date, $model, $api_key) {
+        $max_claims = isset($this->options['perplexity_multistep_max_claims']) ? intval($this->options['perplexity_multistep_max_claims']) : 10;
+        
         $prompt = "You are extracting factual claims from an article for verification. Today is {$current_date}.
 
-**TASK:** Extract ONLY factual claims that can be verified (up to 10 maximum).
+**TASK:** Extract ONLY factual claims that can be verified (up to {$max_claims} maximum).
 
 **WHAT TO EXTRACT:**
 - Specific facts, statistics, numbers, dates
@@ -139,7 +141,7 @@ class Facty_Perplexity_MultiStep_Analyzer {
 }
 ```
 
-Return ONLY the JSON with 5-10 most important factual claims to verify. No other text.";
+Return ONLY the JSON with up to {$max_claims} most important factual claims to verify. No other text.";
 
         $response = wp_remote_post('https://api.perplexity.ai/chat/completions', array(
             'headers' => array(
@@ -196,8 +198,8 @@ Return ONLY the JSON with 5-10 most important factual claims to verify. No other
             return array();
         }
         
-        // Limit to 10 claims max
-        return array_slice($result['claims'], 0, 10);
+        // Limit to configured max claims
+        return array_slice($result['claims'], 0, $max_claims);
     }
     
     /**

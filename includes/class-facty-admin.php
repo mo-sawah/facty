@@ -186,6 +186,14 @@ class Facty_Admin {
         );
         
         add_settings_field(
+            'perplexity_multistep_max_claims',
+            'Multi-Step Max Claims',
+            array($this, 'render_perplexity_multistep_max_claims_field'),
+            'facty-settings',
+            'facty_api_section'
+        );
+        
+        add_settings_field(
             'firecrawl_settings',
             'Firecrawl Settings',
             array($this, 'render_firecrawl_settings_field'),
@@ -292,6 +300,7 @@ class Facty_Admin {
         $sanitized['jina_api_key'] = sanitize_text_field($input['jina_api_key']);
         $sanitized['perplexity_api_key'] = sanitize_text_field($input['perplexity_api_key']);
         $sanitized['perplexity_model'] = sanitize_text_field($input['perplexity_model']);
+        $sanitized['perplexity_multistep_max_claims'] = intval($input['perplexity_multistep_max_claims']);
         $sanitized['firecrawl_searches_per_claim'] = intval($input['firecrawl_searches_per_claim']);
         $sanitized['firecrawl_max_claims'] = intval($input['firecrawl_max_claims']);
         
@@ -624,6 +633,22 @@ class Facty_Admin {
             <strong>Sonar Pro:</strong> Best accuracy, outperforms GPT-4/Claude on fact-checking benchmarks<br>
             <strong>Sonar:</strong> 3x cheaper, still excellent for most fact-checking<br>
             <strong>Sonar Reasoning:</strong> Advanced reasoning for complex claims
+        </p>
+        <?php
+    }
+    
+    public function render_perplexity_multistep_max_claims_field() {
+        $max_claims = isset($this->options['perplexity_multistep_max_claims']) ? $this->options['perplexity_multistep_max_claims'] : 10;
+        ?>
+        <select name="facty_options[perplexity_multistep_max_claims]" class="regular-text">
+            <option value="5" <?php selected($max_claims, 5); ?>>5 Claims (Fast - 30-60s)</option>
+            <option value="10" <?php selected($max_claims, 10); ?>>10 Claims (Recommended - 60-120s)</option>
+            <option value="15" <?php selected($max_claims, 15); ?>>15 Claims (Thorough - 90-180s)</option>
+            <option value="20" <?php selected($max_claims, 20); ?>>20 Claims (Maximum - 120-240s)</option>
+        </select>
+        <p class="description">
+            Maximum number of claims to verify when using <strong>Perplexity Multi-Step</strong> mode.<br>
+            Each claim requires a separate API call for highest accuracy. More claims = longer processing time but more thorough analysis.
         </p>
         <?php
     }

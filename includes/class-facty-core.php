@@ -65,6 +65,7 @@ class Facty_Core {
             'jina_api_key' => '',
             'perplexity_api_key' => '',
             'perplexity_model' => 'sonar-pro',
+            'perplexity_multistep_max_claims' => 10,
             'firecrawl_searches_per_claim' => 3,
             'firecrawl_max_claims' => 10
         );
