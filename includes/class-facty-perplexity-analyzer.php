@@ -146,6 +146,13 @@ You have access to sources from the past {$recency_description}. However, you MU
             \"why_it_matters\": \"Impact on readers\"
         }
     ],
+
+**ISSUE TYPE GUIDE:**
+- \"Factual Error\": Use ONLY when you have clear evidence that CONTRADICTS the claim from recent, credible sources
+- \"Unverified\": Use when you cannot find sources to verify the claim (lack of evidence ≠ false)
+- \"Outdated\": Use when claim was true in the past but is no longer accurate
+- \"Misleading\": Use when claim is technically true but missing critical context
+- \"Missing Context\": Use when claim needs additional information to be properly understood
     \"verified_facts\": [
         {
             \"claim\": \"Accurate claim from article\",
@@ -163,11 +170,15 @@ You have access to sources from the past {$recency_description}. However, you MU
 ```
 
 **CRITICAL RULES:**
+- **NEVER mark a claim as FALSE unless you have STRONG, RECENT contradicting evidence from multiple credible sources**
+- **Lack of sources = UNVERIFIED, NOT FALSE** (this is critical!)
+- If you can't find recent sources but can't find contradicting evidence either = UNVERIFIED
 - ALWAYS prioritize the MOST RECENT sources for current events (even if older sources are available)
 - Verify current office holders as of {$current_date} - DO NOT use outdated information
 - For events from the last 1-2 hours: Mark as \"Unverified\" with explanation \"Very recent event - sources may not be indexed yet\" (this is acceptable)
 - For political claims: Cross-check with multiple recent authoritative sources
-- Unverified ≠ False (if can't verify with recent sources, mark as \"Unverified\")
+- Only mark as \"Factual Error\" if you have clear, recent evidence that CONTRADICTS the claim
+- When in doubt between Unverified and False: Choose Unverified
 - Use precise scores (not always 50/70/85)
 - Be fair: truly accurate articles deserve 90-100
 - Include ONLY the JSON in your response (no markdown formatting)
@@ -203,7 +214,7 @@ You have access to sources from the past {$recency_description}. However, you MU
                 'messages' => array(
                     array(
                         'role' => 'system',
-                        'content' => "You are a precise fact-checker that returns only valid JSON. You have access to sources from the past {$recency_description}. CRITICAL: Always PRIORITIZE the MOST RECENT sources (last few days) when verifying current information. Use older sources only for historical context or when recent sources don't exist."
+                        'content' => "You are a precise fact-checker that returns only valid JSON. You have access to sources from the past {$recency_description}. CRITICAL: Always PRIORITIZE the MOST RECENT sources (last few days) when verifying current information. Use older sources only for historical context or when recent sources don't exist. IMPORTANT: NEVER mark a claim as false unless you have strong contradicting evidence - if you can't find sources, mark it as UNVERIFIED, not FALSE."
                     ),
                     array(
                         'role' => 'user',

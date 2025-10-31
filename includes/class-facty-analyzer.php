@@ -70,12 +70,15 @@ Return pure JSON (no markdown):
 }
 
 RULES:
+- **CRITICAL: NEVER mark as \"Factual Error\" unless you have STRONG evidence that CONTRADICTS the claim**
+- **Lack of sources = \"Unverified\", NOT \"Factual Error\"** (this is critical!)
 - Unverified ≠ False (if you can't verify, say that, don't call it false)
 - IMPORTANT: Unverified claims (lack of sources) should NOT heavily penalize the score - they're not the same as false claims
-- For very recent events (last 1-2 hours), it's acceptable to mark as unverified with note (Very recent - sources not indexed yet)
+- For very recent events (last 1-2 hours), it's acceptable to mark as unverified with note \"Very recent - sources not indexed yet\"
 - Write for readers, not editors  
 - Use precise scores (not always 50)
-- Be fair: good articles with some unverified claims can still get 75-85+";
+- Be fair: good articles with some unverified claims can still get 75-85+
+- When in doubt between Unverified and Factual Error: Choose Unverified";
         
         if ($task_id) {
             $this->update_progress($task_id, 60, 'verifying', 'Verifying facts...');

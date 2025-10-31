@@ -241,12 +241,15 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
 4. Determine if the claim is accurate, outdated, misleading, or false
 
 **VERIFICATION CHECKLIST:**
+- **CRITICAL: NEVER mark as \"factual_error\" unless you have STRONG, RECENT contradicting evidence from credible sources**
+- **Lack of sources = \"unverified\", NOT \"factual_error\"**
 - If claim mentions current president/officials: Verify who holds position AS OF {$current_date} using sources from last few days
 - Check dates and timelines match {$current_date}
 - Look for updates or corrections to the claim
 - Assess if claim needs additional context
 - Prioritize sources dated closer to {$current_date}
 - For events from the last 1-2 hours: It's acceptable to mark as \"unverified\" with explanation \"Very recent event - sources may not be indexed yet\"
+- When in doubt between \"unverified\" and \"factual_error\": Choose \"unverified\"
 
 **RETURN THIS EXACT JSON:**
 ```json
@@ -281,7 +284,7 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
                 'messages' => array(
                     array(
                         'role' => 'system',
-                        'content' => "You are a precise fact-checker. You have access to sources from the past {$recency_description}. CRITICAL: Always PRIORITIZE the MOST RECENT sources (last few days) when verifying current information. Return only valid JSON."
+                        'content' => "You are a precise fact-checker. You have access to sources from the past {$recency_description}. CRITICAL: Always PRIORITIZE the MOST RECENT sources (last few days) when verifying current information. NEVER mark a claim as factual_error unless you have strong contradicting evidence - if you can't find sources, mark it as unverified. Return only valid JSON."
                     ),
                     array(
                         'role' => 'user',
