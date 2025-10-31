@@ -403,7 +403,7 @@ $options = get_option('facty_options', array());
                                 <div class="fact-check-header">
                                     <div class="fact-check-title">
                                         <div class="fact-check-icon">✓</div>
-                                        <h3>AI Fact Checker</h3>
+                                        <h3>Fact Checker</h3>
                                     </div>
                                     <button class="check-button" aria-label="Check article facts">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

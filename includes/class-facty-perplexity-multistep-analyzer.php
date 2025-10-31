@@ -381,6 +381,9 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
         $accurate_count = 0;
         $inaccurate_count = 0;
         $high_severity_issues = 0;
+        $unverified_count = 0;
+        $misleading_count = 0;
+        $false_count = 0;
         
         $issues = array();
         $verified_facts = array();
@@ -399,6 +402,21 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
                 );
             } else {
                 $inaccurate_count++;
+                
+                // Count by issue type for better scoring
+                switch ($issue_type) {
+                    case 'factual_error':
+                        $false_count++;
+                        break;
+                    case 'outdated':
+                    case 'misleading':
+                    case 'missing_context':
+                        $misleading_count++;
+                        break;
+                    case 'unverified':
+                        $unverified_count++;
+                        break;
+                }
                 
                 // Map issue type to severity
                 $severity = 'medium';
@@ -453,13 +471,24 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
             }
         }
         
-        // Calculate score based on verification results
-        $accuracy_rate = $total_claims > 0 ? ($accurate_count / $total_claims) * 100 : 0;
+        // Calculate score using WEIGHTED system
+        // Unverified claims shouldn't hurt score as much as false claims
+        if ($total_claims > 0) {
+            $weighted_score = (
+                ($accurate_count * 100) +      // Accurate = 100%
+                ($unverified_count * 80) +     // Unverified = 80% (not as bad as false)
+                ($misleading_count * 50) +     // Misleading/Outdated = 50%
+                ($false_count * 0)             // False = 0%
+            ) / $total_claims;
+            
+            $score = round($weighted_score);
+        } else {
+            $score = 0;
+        }
         
-        // Adjust score based on issue severity
-        $score = round($accuracy_rate);
+        // Additional penalty for high severity issues (false claims)
         if ($high_severity_issues > 0) {
-            $score = max(0, $score - ($high_severity_issues * 10));
+            $score = max(0, $score - ($high_severity_issues * 5)); // Reduced from 10 to 5
         }
         
         // Determine status

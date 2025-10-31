@@ -71,9 +71,11 @@ Return pure JSON (no markdown):
 
 RULES:
 - Unverified ≠ False (if you can't verify, say that, don't call it false)
+- IMPORTANT: Unverified claims (lack of sources) should NOT heavily penalize the score - they're not the same as false claims
+- For very recent events (last 1-2 hours), it's acceptable to mark as unverified with note (Very recent - sources not indexed yet)
 - Write for readers, not editors  
 - Use precise scores (not always 50)
-- Be fair: good articles get 85-100";
+- Be fair: good articles with some unverified claims can still get 75-85+";
         
         if ($task_id) {
             $this->update_progress($task_id, 60, 'verifying', 'Verifying facts...');

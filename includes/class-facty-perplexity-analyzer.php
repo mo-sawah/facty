@@ -118,11 +118,13 @@ You have access to sources from the past {$recency_description}. However, you MU
 
 **SCORING GUIDE** (Be precise - not everything is 50):
 - 95-100: Completely accurate, well-sourced with recent sources, current as of {$current_date}
-- 85-94: Accurate with minor/outdated details
-- 70-84: Mostly accurate, some problems
-- 50-69: Mixed - significant concerns
+- 85-94: Accurate with minor/outdated details, or some unverified claims
+- 70-84: Mostly accurate, some problems or multiple unverified claims
+- 50-69: Mixed - significant concerns with factual errors
 - 30-49: Mostly inaccurate or outdated
 - 0-29: False or highly misleading
+
+**IMPORTANT:** Unverified claims (lack of sources) should NOT heavily penalize the score - they're not the same as false claims. An article with mostly accurate content but a few unverified claims can still score 80-90.
 
 **ARTICLE:**
 {$content}
