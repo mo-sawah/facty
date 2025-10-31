@@ -259,6 +259,24 @@ jQuery(document).ready(function ($) {
   $(document).on("click", ".check-button", function (e) {
     e.preventDefault();
     var container = $(this).closest(".fact-check-container");
+    var button = $(this);
+
+    // If button shows "Re-check", clear cache to force new analysis
+    if (
+      button.find("span").text().toLowerCase().includes("re-check") ||
+      button.find("span").text().toLowerCase().includes("retry")
+    ) {
+      var postId = container.data("post-id");
+      if (postId && factCheckCache[postId]) {
+        delete factCheckCache[postId]; // Clear cached results
+        console.log(
+          "Facty: Cleared cache for post " +
+            postId +
+            " - forcing fresh analysis"
+        );
+      }
+    }
+
     checkUserAccessAndProceed(container);
   });
 
@@ -674,6 +692,23 @@ jQuery(document).ready(function ($) {
 
         html += "</div>";
       });
+
+      // Check if any issues are "Unverified" type - add helper note
+      var hasUnverified = data.issues.some(function (issue) {
+        return issue.type && issue.type.toLowerCase().includes("unverified");
+      });
+
+      if (hasUnverified) {
+        html +=
+          '<div class="recent-news-note" style="margin-top: 16px; padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 13px; line-height: 1.6;">';
+        html += "<strong>ℹ️ Note about very recent news:</strong> ";
+        html +=
+          "If this article discusses events from the last 1-2 hours, sources may not be indexed yet by search engines. ";
+        html +=
+          'Click <strong>"Re-check"</strong> in a few hours for updated verification.';
+        html += "</div>";
+      }
+
       html += "</div>";
     }
 

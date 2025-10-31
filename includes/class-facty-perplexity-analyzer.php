@@ -163,6 +163,7 @@ You have access to sources from the past {$recency_description}. However, you MU
 **CRITICAL RULES:**
 - ALWAYS prioritize the MOST RECENT sources for current events (even if older sources are available)
 - Verify current office holders as of {$current_date} - DO NOT use outdated information
+- For events from the last 1-2 hours: Mark as \"Unverified\" with explanation \"Very recent event - sources may not be indexed yet\" (this is acceptable)
 - For political claims: Cross-check with multiple recent authoritative sources
 - Unverified ≠ False (if can't verify with recent sources, mark as \"Unverified\")
 - Use precise scores (not always 50/70/85)

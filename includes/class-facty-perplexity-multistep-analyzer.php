@@ -246,6 +246,7 @@ Return ONLY the JSON with up to {$max_claims} most important factual claims to v
 - Look for updates or corrections to the claim
 - Assess if claim needs additional context
 - Prioritize sources dated closer to {$current_date}
+- For events from the last 1-2 hours: It's acceptable to mark as \"unverified\" with explanation \"Very recent event - sources may not be indexed yet\"
 
 **RETURN THIS EXACT JSON:**
 ```json
