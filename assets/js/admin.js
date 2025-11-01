@@ -78,9 +78,15 @@ jQuery(document).ready(function ($) {
     });
   });
 
-  // Form validation
-  $("form").on("submit", function (e) {
-    var apiKey = $('input[name="facty_options[api_key]"]').val();
+  // Form validation - only for Facty settings page
+  $('form[action="options.php"]').on("submit", function (e) {
+    // Only validate if we're on the Facty settings page
+    var $apiKeyField = $('input[name="facty_options[api_key]"]');
+    if ($apiKeyField.length === 0) {
+      return true; // Not on Facty settings page, allow submission
+    }
+    
+    var apiKey = $apiKeyField.val();
     var mode = $('select[name="facty_options[fact_check_mode]"]').val();
     var firecrawlKey = $('input[name="facty_options[firecrawl_api_key]"]').val();
 
